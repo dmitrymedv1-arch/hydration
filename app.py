@@ -36,9 +36,9 @@ PUBLICATION_STYLE = {
     'axis_line_width': 2.0,
     'tick_length': 8,
     'tick_width': 1.5,
-    'plot_width': 800,
-    'plot_height': 600,
-    'plot_ratio': 0.75  # 3:4 соотношение
+    'plot_width': 600,  # ИЗМЕНЕНО: уменьшена ширина для соотношения 3:4
+    'plot_height': 800,  # ИЗМЕНЕНО: увеличена высота для соотношения 3:4
+    'plot_ratio': 4/3  # ИЗМЕНЕНО: соотношение 3:4 (высота/ширина)
 }
 
 # Инициализация session state
@@ -315,11 +315,11 @@ def validate_input_data(data_array, Acc):
 # ============================================================================
 
 def create_publication_figure(title, x_title, y_title, width=None, height=None):
-    """Create publication-quality figure with correct aspect ratio"""
+    """Create publication-quality figure with correct aspect ratio 3:4"""
     if width is None:
         width = PUBLICATION_STYLE['plot_width']
     if height is None:
-        height = int(width * PUBLICATION_STYLE['plot_ratio'])
+        height = PUBLICATION_STYLE['plot_height']  # Фиксированная высота для соотношения 3:4
     
     fig = go.Figure()
     
@@ -424,7 +424,7 @@ def create_combined_fitting_figure(title, x_title, y_title_top, y_title_bottom, 
     if width is None:
         width = PUBLICATION_STYLE['plot_width']
     if height is None:
-        height = int(width * PUBLICATION_STYLE['plot_ratio'] * 1.4)  # Taller for two plots
+        height = int(PUBLICATION_STYLE['plot_height'] * 1.4)  # Taller for two plots
     
     fig = make_subplots(
         rows=2, cols=1,
@@ -609,7 +609,8 @@ def get_json_download_link(data, filename="parameters.json"):
 
 def perform_calculations(data_input_text, uploaded_file, pH2O_value, Acc_value,
                         exclude_low_T_method1, exclude_high_T_method1,
-                        exclude_low_T_method2, exclude_high_T_method2):
+                        exclude_low_T_method2, exclude_high_T_method2,
+                        show_intermediate, calculate_3d, use_log_pH2O):
     """Perform all calculations and return results"""
     
     # Parse and validate data
@@ -777,7 +778,10 @@ def perform_calculations(data_input_text, uploaded_file, pH2O_value, Acc_value,
             'exclude_low_m1': exclude_low_T_method1,
             'exclude_high_m1': exclude_high_T_method1,
             'exclude_low_m2': exclude_low_T_method2,
-            'exclude_high_m2': exclude_high_T_method2
+            'exclude_high_m2': exclude_high_T_method2,
+            'show_intermediate': show_intermediate,
+            'calculate_3d': calculate_3d,
+            'use_log_pH2O': use_log_pH2O
         }
     }
     
@@ -899,11 +903,17 @@ with st.sidebar:
                 help=f"Exclude last N points (0-{max_exclusion})"
             )
     
-    # Additional options
+    # Additional options - ИСПРАВЛЕНО: виджеты активированы
     st.subheader("Additional Options")
     show_intermediate = st.checkbox("Show intermediate calculations", value=False, key="show_intermediate")
     calculate_3d = st.checkbox("Calculate 3D surfaces", value=False, key="calculate_3d")
     use_log_pH2O = st.checkbox("Logarithmic pH₂O scale in 3D", value=False, key="use_log_pH2O")
+    
+    # Новые опции для Comparison method
+    st.subheader("Comparison Method Options")
+    show_method1_comparison = st.checkbox("Show Method 1 curve", value=True, key="show_method1_comparison")
+    show_method2_comparison = st.checkbox("Show Method 2 curve", value=True, key="show_method2_comparison")
+    show_experimental_comparison = st.checkbox("Show Experimental data", value=True, key="show_experimental_comparison")
     
     # Reset button
     if st.button("🔄 Reset to Defaults", use_container_width=True, key="reset_button"):
@@ -926,15 +936,16 @@ with st.sidebar:
     st.markdown("---")
     st.markdown(f"**Total data points:** {n_total_points}")
     st.markdown(f"**Max exclusions:** {max_exclusion} points")
-    st.markdown("**Version:** 2.1 | **Updated:** 2024")
+    st.markdown("**Version:** 2.2 | **Updated:** 2024")
 
 # Main calculation and display
 if n_total_points > 0:
-    # Perform calculations
+    # Perform calculations - ИСПРАВЛЕНО: передаем новые параметры
     results, load_message, valid_message, data_array = perform_calculations(
         data_input_text, uploaded_file, pH2O_value, Acc_value,
         exclude_low_T_method1, exclude_high_T_method1,
-        exclude_low_T_method2, exclude_high_T_method2
+        exclude_low_T_method2, exclude_high_T_method2,
+        show_intermediate, calculate_3d, use_log_pH2O
     )
     
     if results is None:
@@ -948,6 +959,17 @@ if n_total_points > 0:
             with st.expander("📊 Loaded Data", expanded=False):
                 df_data = pd.DataFrame(data_array, columns=['Temperature (°C)', '[OH]'])
                 st.dataframe(df_data, use_container_width=True)
+                
+            # Show Kw calculation details
+            with st.expander("📊 Method 1: Kw Calculation Details", expanded=False):
+                kw_data = pd.DataFrame({
+                    'Temperature (°C)': results['method1']['T_C'],
+                    'Temperature (K)': results['method1']['T_K'],
+                    '[OH] exp': results['method1']['OH_exp'],
+                    'Kw': results['method1']['Kw_valid'] if 'Kw_valid' in results['method1'] else [np.nan]*len(results['method1']['T_C']),
+                    'ln(Kw)': results['method1']['ln_Kw'] if 'ln_Kw' in results['method1'] else [np.nan]*len(results['method1']['T_C'])
+                })
+                st.dataframe(kw_data, use_container_width=True)
         
         # ====================================================================
         # METHOD 1 RESULTS
@@ -1243,58 +1265,82 @@ if n_total_points > 0:
         
         st.plotly_chart(fig3, use_container_width=True)
         
-        # 4. Method Comparison
+        # 4. Method Comparison - ИЗМЕНЕНО: с учетом виджетов
         fig4 = create_publication_figure(
             "Comparison of Methods",
             "Temperature (°C)",
             "[OH]"
         )
         
-        # Method 1 curve
-        OH_fit_m1 = analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, 
-                                          results['method1']['dH'], results['method1']['dS'])
+        # Method 1 curve (только если выбрано в виджете)
+        if show_method1_comparison:
+            OH_fit_m1 = analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, 
+                                              results['method1']['dH'], results['method1']['dS'])
+            
+            fig4.add_trace(go.Scatter(
+                x=T_fit,
+                y=OH_fit_m1,
+                mode='lines',
+                line=dict(
+                    color='blue', 
+                    width=PUBLICATION_STYLE['line_width'],
+                    dash='dash'
+                ),
+                name=f'Method 1: ΔH = {results["method1"]["dH"]/1000:.1f} kJ/mol',
+                showlegend=True
+            ))
         
-        fig4.add_trace(go.Scatter(
-            x=T_fit,
-            y=OH_fit_m1,
-            mode='lines',
-            line=dict(
-                color='blue', 
-                width=PUBLICATION_STYLE['line_width'],
-                dash='dash'
-            ),
-            name=f'Method 1: ΔH = {results["method1"]["dH"]/1000:.1f} kJ/mol',
-            showlegend=True
-        ))
+        # Method 2 curve (только если выбрано в виджете)
+        if show_method2_comparison:
+            OH_fit_m2 = analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, 
+                                              results['method2']['dH'], results['method2']['dS'])
+            
+            # Определяем легенду в зависимости от видимости Method 1
+            if show_method1_comparison:
+                legend_name = f'Method 2: ΔH = {results["method2"]["dH"]/1000:.1f} kJ/mol'
+            else:
+                legend_name = 'Modelled data'
+            
+            fig4.add_trace(go.Scatter(
+                x=T_fit,
+                y=OH_fit_m2,
+                mode='lines',
+                line=dict(
+                    color='red', 
+                    width=PUBLICATION_STYLE['line_width']
+                ),
+                name=legend_name,
+                showlegend=True
+            ))
         
-        # Method 2 curve
-        fig4.add_trace(go.Scatter(
-            x=T_fit,
-            y=OH_fit,
-            mode='lines',
-            line=dict(
-                color='red', 
-                width=PUBLICATION_STYLE['line_width']
-            ),
-            name=f'Method 2: ΔH = {results["method2"]["dH"]/1000:.1f} kJ/mol',
-            showlegend=True
-        ))
+        # Experimental points (только если выбрано в виджете)
+        if show_experimental_comparison:
+            fig4.add_trace(go.Scatter(
+                x=results['data']['T_C'],
+                y=results['data']['OH_exp'],
+                mode='markers',
+                marker=dict(
+                    size=PUBLICATION_STYLE['marker_size']-2,
+                    color='black',
+                    symbol='circle',
+                    opacity=0.7,
+                    line=dict(width=0.5, color='black')
+                ),
+                name='Experimental data',
+                showlegend=True
+            ))
         
-        # Experimental points
-        fig4.add_trace(go.Scatter(
-            x=results['data']['T_C'],
-            y=results['data']['OH_exp'],
-            mode='markers',
-            marker=dict(
-                size=PUBLICATION_STYLE['marker_size']-2,
-                color='black',
-                symbol='circle',
-                opacity=0.7,
-                line=dict(width=0.5, color='black')
-            ),
-            name='Experimental data',
-            showlegend=True
-        ))
+        # Если ничего не выбрано, показываем сообщение
+        if not (show_method1_comparison or show_method2_comparison or show_experimental_comparison):
+            fig4.add_annotation(
+                x=0.5,
+                y=0.5,
+                xref="paper",
+                yref="paper",
+                text="Select at least one curve to display",
+                showarrow=False,
+                font=dict(size=16, color="gray")
+            )
         
         st.plotly_chart(fig4, use_container_width=True)
         
@@ -1428,6 +1474,8 @@ else:
     ✅ **Bold axis titles** with larger font size  
     ✅ **Rietveld-style combined plots** (fitting + residuals)  
     ✅ **Correct point exclusion logic**  
+    ✅ **Active widgets in Additional Options**  
+    ✅ **Customizable comparison plot** with show/hide options  
     
     ## 📊 Data Format
     
