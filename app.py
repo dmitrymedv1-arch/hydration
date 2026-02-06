@@ -1,4 +1,4 @@
-import streamlit as stimport streamlit as st
+import streamlit as stimport
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -1199,3 +1199,4 @@ if not calculate_btn:
     with st.expander("📈 Пример графика результатов"):
         st.image("https://via.placeholder.com/800x400?text=Пример+результатов", 
                 caption="Пример визуализации результатов")
+
