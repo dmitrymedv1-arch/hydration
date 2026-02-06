@@ -1413,15 +1413,7 @@ if n_total_points > 0:
                         cmin=0,
                         cmax=max_abs,
                         showscale=True,  # Показываем цветовую шкалу
-                        colorbar=dict(
-                            title='|Δ[OH]|',
-                            titleside='right',
-                            thickness=15,
-                            len=0.3,
-                            x=1.02,
-                            y=0.5,
-                            yanchor='middle'
-                        ),
+                        # Убрали colorbar=dict(...) - Plotly автоматически создаст цветовую шкалу
                         symbol='circle',
                         line=dict(width=0.5, color='black')
                     ),
@@ -1717,4 +1709,5 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
 
