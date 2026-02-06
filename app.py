@@ -1,4 +1,5 @@
 import streamlit as st
+import numpy as npimport streamlit as st
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -10,6 +11,7 @@ from io import BytesIO
 import json
 from datetime import datetime
 import base64
+import plotly.express as px
 warnings.filterwarnings('ignore')
 
 # Настройки страницы
@@ -25,10 +27,10 @@ R = 8.314  # J/(mol·K)
 # Настройки стиля для научных публикаций
 PUBLICATION_STYLE = {
     'font_family': 'Times New Roman, serif',
-    'font_size': 14,
+    'font_size': 16,  # Увеличен базовый размер шрифта
     'title_font_size': 18,
-    'axis_title_font_size': 16,
-    'tick_font_size': 12,
+    'axis_title_font_size': 16,  # Подписи осей 16 ppt
+    'tick_font_size': 12,  # Значения на осях 12 ppt
     'legend_font_size': 12,
     'line_width': 2.0,
     'marker_size': 8,
@@ -36,9 +38,9 @@ PUBLICATION_STYLE = {
     'axis_line_width': 2.0,
     'tick_length': 8,
     'tick_width': 1.5,
-    'plot_width': 600,  # ИЗМЕНЕНО: уменьшена ширина для соотношения 3:4
-    'plot_height': 800,  # ИЗМЕНЕНО: увеличена высота для соотношения 3:4
-    'plot_ratio': 4/3  # ИЗМЕНЕНО: соотношение 3:4 (высота/ширина)
+    'plot_width': 400,  # ИЗМЕНЕНО: компактный размер
+    'plot_height': 533,  # Сохранение соотношения 3:4 (400 * 4/3 ≈ 533)
+    'plot_ratio': 4/3
 }
 
 # Инициализация session state
@@ -319,7 +321,7 @@ def create_publication_figure(title, x_title, y_title, width=None, height=None):
     if width is None:
         width = PUBLICATION_STYLE['plot_width']
     if height is None:
-        height = PUBLICATION_STYLE['plot_height']  # Фиксированная высота для соотношения 3:4
+        height = PUBLICATION_STYLE['plot_height']
     
     fig = go.Figure()
     
@@ -349,7 +351,7 @@ def create_publication_figure(title, x_title, y_title, width=None, height=None):
             showline=True,
             linewidth=PUBLICATION_STYLE['axis_line_width'],
             linecolor='black',
-            mirror=True,
+            mirror=False,  # Только нижняя линия
             showgrid=False,
             zeroline=False,
             tickfont=dict(
@@ -376,7 +378,7 @@ def create_publication_figure(title, x_title, y_title, width=None, height=None):
             showline=True,
             linewidth=PUBLICATION_STYLE['axis_line_width'],
             linecolor='black',
-            mirror=True,
+            mirror=False,  # Только левая линия
             showgrid=False,
             zeroline=False,
             tickfont=dict(
@@ -424,7 +426,7 @@ def create_combined_fitting_figure(title, x_title, y_title_top, y_title_bottom, 
     if width is None:
         width = PUBLICATION_STYLE['plot_width']
     if height is None:
-        height = int(PUBLICATION_STYLE['plot_height'] * 1.4)  # Taller for two plots
+        height = int(PUBLICATION_STYLE['plot_height'] * 1.4)
     
     fig = make_subplots(
         rows=2, cols=1,
@@ -436,17 +438,11 @@ def create_combined_fitting_figure(title, x_title, y_title_top, y_title_bottom, 
     
     # Update layout for top plot
     fig.update_xaxes(
-        title_text=x_title,
-        title_font=dict(
-            family=PUBLICATION_STYLE['font_family'],
-            size=PUBLICATION_STYLE['axis_title_font_size'],
-            color='black',
-            weight='bold'
-        ),
+        title_text="",  # Нет подписи сверху
         showline=True,
         linewidth=PUBLICATION_STYLE['axis_line_width'],
         linecolor='black',
-        mirror=True,
+        mirror=False,  # Только нижняя линия
         showgrid=False,
         zeroline=False,
         tickfont=dict(
@@ -472,7 +468,7 @@ def create_combined_fitting_figure(title, x_title, y_title_top, y_title_bottom, 
         showline=True,
         linewidth=PUBLICATION_STYLE['axis_line_width'],
         linecolor='black',
-        mirror=True,
+        mirror=False,  # Только левая линия
         showgrid=False,
         zeroline=False,
         tickfont=dict(
@@ -499,7 +495,7 @@ def create_combined_fitting_figure(title, x_title, y_title_top, y_title_bottom, 
         showline=True,
         linewidth=PUBLICATION_STYLE['axis_line_width'],
         linecolor='black',
-        mirror=True,
+        mirror=False,  # Только нижняя линия
         showgrid=False,
         zeroline=False,
         tickfont=dict(
@@ -525,7 +521,7 @@ def create_combined_fitting_figure(title, x_title, y_title_top, y_title_bottom, 
         showline=True,
         linewidth=PUBLICATION_STYLE['axis_line_width'],
         linecolor='black',
-        mirror=True,
+        mirror=False,  # Только левая линия
         showgrid=False,
         zeroline=True,
         zerolinewidth=1,
@@ -610,7 +606,7 @@ def get_json_download_link(data, filename="parameters.json"):
 def perform_calculations(data_input_text, uploaded_file, pH2O_value, Acc_value,
                         exclude_low_T_method1, exclude_high_T_method1,
                         exclude_low_T_method2, exclude_high_T_method2,
-                        show_intermediate, calculate_3d, use_log_pH2O):
+                        use_log_pH2O, colors, scale_design, palette_design):
     """Perform all calculations and return results"""
     
     # Parse and validate data
@@ -779,13 +775,130 @@ def perform_calculations(data_input_text, uploaded_file, pH2O_value, Acc_value,
             'exclude_high_m1': exclude_high_T_method1,
             'exclude_low_m2': exclude_low_T_method2,
             'exclude_high_m2': exclude_high_T_method2,
-            'show_intermediate': show_intermediate,
-            'calculate_3d': calculate_3d,
-            'use_log_pH2O': use_log_pH2O
+            'use_log_pH2O': use_log_pH2O,
+            'colors': colors,
+            'scale_design': scale_design,
+            'palette_design': palette_design
         }
     }
     
     return results, load_message, valid_message, data_array
+
+def create_3d_surface(results, colors, palette_design):
+    """Create 3D surface plot"""
+    if results is None:
+        return None
+    
+    # Создаем сетку для температуры и pH2O
+    T_min = min(results['data']['T_C'])
+    T_max = max(results['data']['T_C'])
+    T_range = np.linspace(T_min, T_max, 50)
+    
+    pH2O_min = 0.01
+    pH2O_max = 0.5
+    pH2O_range = np.linspace(pH2O_min, pH2O_max, 50)
+    
+    T_grid, pH2O_grid = np.meshgrid(T_range, pH2O_range)
+    
+    # Рассчитываем [OH] для каждой комбинации
+    OH_grid = np.zeros_like(T_grid)
+    for i in range(len(pH2O_range)):
+        for j in range(len(T_range)):
+            T_K_val = T_range[j] + 273.15
+            OH_grid[i, j] = analytical_OH_numerical(
+                T_K_val, 
+                pH2O_range[i], 
+                results['parameters']['Acc'],
+                results['method2']['dH'],
+                results['method2']['dS']
+            )
+    
+    # Настройки палитры
+    if palette_design == 'Viridis':
+        colorscale = 'Viridis'
+    elif palette_design == 'Plasma':
+        colorscale = 'Plasma'
+    elif palette_design == 'Inferno':
+        colorscale = 'Inferno'
+    elif palette_design == 'Magma':
+        colorscale = 'Magma'
+    elif palette_design == 'Cividis':
+        colorscale = 'Cividis'
+    else:  # 'Rainbow'
+        colorscale = 'Rainbow'
+    
+    # Создаем 3D поверхность
+    fig = go.Figure(data=[
+        go.Surface(
+            x=T_grid,
+            y=pH2O_grid,
+            z=OH_grid,
+            colorscale=colorscale,
+            opacity=0.7,  # Прозрачность поверхности
+            showscale=True,
+            contours={
+                "z": {"show": True, "usecolormap": True, "highlightcolor": "limegreen", "project": {"z": True}}
+            }
+        )
+    ])
+    
+    # Добавляем экспериментальные точки
+    fig.add_trace(go.Scatter3d(
+        x=results['data']['T_C'],
+        y=[results['parameters']['pH2O']] * len(results['data']['T_C']),
+        z=results['data']['OH_exp'],
+        mode='markers',
+        marker=dict(
+            size=5,
+            color=colors['experimental'],
+            opacity=0.8,
+            symbol='circle'
+        ),
+        name='Experimental data'
+    ))
+    
+    fig.update_layout(
+        title=dict(
+            text='3D Surface: [OH] = f(T, pH₂O)',
+            font=dict(size=18, family='Times New Roman', color='black', weight='bold')
+        ),
+        scene=dict(
+            xaxis=dict(
+                title='Temperature (°C)',
+                titlefont=dict(size=16, family='Times New Roman', color='black', weight='bold'),
+                tickfont=dict(size=12, family='Times New Roman', color='black'),
+                showline=True,
+                linewidth=2,
+                linecolor='black',
+                showgrid=False
+            ),
+            yaxis=dict(
+                title='pH₂O (atm)',
+                titlefont=dict(size=16, family='Times New Roman', color='black', weight='bold'),
+                tickfont=dict(size=12, family='Times New Roman', color='black'),
+                showline=True,
+                linewidth=2,
+                linecolor='black',
+                showgrid=False
+            ),
+            zaxis=dict(
+                title='[OH]',
+                titlefont=dict(size=16, family='Times New Roman', color='black', weight='bold'),
+                tickfont=dict(size=12, family='Times New Roman', color='black'),
+                showline=True,
+                linewidth=2,
+                linecolor='black',
+                showgrid=False
+            ),
+            bgcolor='white'
+        ),
+        width=600,
+        height=600,
+        margin=dict(l=0, r=0, t=50, b=0),
+        font=dict(family='Times New Roman', size=14, color='black')
+    )
+    
+    return fig
 
 # ============================================================================
 # MAIN APPLICATION
@@ -903,13 +1016,45 @@ with st.sidebar:
                 help=f"Exclude last N points (0-{max_exclusion})"
             )
     
-    # Additional options - ИСПРАВЛЕНО: виджеты активированы
+    # Color settings
+    st.subheader("Color Settings")
+    
+    col_exp, col_m1, col_m2 = st.columns(3)
+    with col_exp:
+        exp_color = st.color_picker("Experimental", "#000000", key="exp_color")
+    with col_m1:
+        m1_color = st.color_picker("Method 1", "#0000FF", key="m1_color")
+    with col_m2:
+        m2_color = st.color_picker("Method 2", "#FF0000", key="m2_color")
+    
+    colors = {
+        'experimental': exp_color,
+        'method1': m1_color,
+        'method2': m2_color
+    }
+    
+    # Scale and palette settings
+    st.subheader("Visualization Settings")
+    
+    scale_design = st.selectbox(
+        "Residuals scale design:",
+        ["Linear", "Logarithmic", "Symmetric"],
+        index=0,
+        key="scale_design"
+    )
+    
+    palette_design = st.selectbox(
+        "3D surface palette:",
+        ["Viridis", "Plasma", "Inferno", "Magma", "Cividis", "Rainbow"],
+        index=0,
+        key="palette_design"
+    )
+    
+    # Additional options
     st.subheader("Additional Options")
-    show_intermediate = st.checkbox("Show intermediate calculations", value=False, key="show_intermediate")
-    calculate_3d = st.checkbox("Calculate 3D surfaces", value=False, key="calculate_3d")
     use_log_pH2O = st.checkbox("Logarithmic pH₂O scale in 3D", value=False, key="use_log_pH2O")
     
-    # Новые опции для Comparison method
+    # Comparison Method Options
     st.subheader("Comparison Method Options")
     show_method1_comparison = st.checkbox("Show Method 1 curve", value=True, key="show_method1_comparison")
     show_method2_comparison = st.checkbox("Show Method 2 curve", value=True, key="show_method2_comparison")
@@ -936,16 +1081,16 @@ with st.sidebar:
     st.markdown("---")
     st.markdown(f"**Total data points:** {n_total_points}")
     st.markdown(f"**Max exclusions:** {max_exclusion} points")
-    st.markdown("**Version:** 2.2 | **Updated:** 2024")
+    st.markdown("**Version:** 2.3 | **Updated:** 2024")
 
 # Main calculation and display
 if n_total_points > 0:
-    # Perform calculations - ИСПРАВЛЕНО: передаем новые параметры
+    # Perform calculations
     results, load_message, valid_message, data_array = perform_calculations(
         data_input_text, uploaded_file, pH2O_value, Acc_value,
         exclude_low_T_method1, exclude_high_T_method1,
         exclude_low_T_method2, exclude_high_T_method2,
-        show_intermediate, calculate_3d, use_log_pH2O
+        use_log_pH2O, colors, scale_design, palette_design
     )
     
     if results is None:
@@ -953,23 +1098,6 @@ if n_total_points > 0:
     else:
         # Display status
         st.success(f"{load_message}. {valid_message}")
-        
-        # Display intermediate data if requested
-        if show_intermediate:
-            with st.expander("📊 Loaded Data", expanded=False):
-                df_data = pd.DataFrame(data_array, columns=['Temperature (°C)', '[OH]'])
-                st.dataframe(df_data, use_container_width=True)
-                
-            # Show Kw calculation details
-            with st.expander("📊 Method 1: Kw Calculation Details", expanded=False):
-                kw_data = pd.DataFrame({
-                    'Temperature (°C)': results['method1']['T_C'],
-                    'Temperature (K)': results['method1']['T_K'],
-                    '[OH] exp': results['method1']['OH_exp'],
-                    'Kw': results['method1']['Kw_valid'] if 'Kw_valid' in results['method1'] else [np.nan]*len(results['method1']['T_C']),
-                    'ln(Kw)': results['method1']['ln_Kw'] if 'ln_Kw' in results['method1'] else [np.nan]*len(results['method1']['T_C'])
-                })
-                st.dataframe(kw_data, use_container_width=True)
         
         # ====================================================================
         # METHOD 1 RESULTS
@@ -1109,6 +1237,11 @@ if n_total_points > 0:
                     'n_points': int(results['method2']['n_points']),
                     'excluded_low': results['parameters']['exclude_low_m2'],
                     'excluded_high': results['parameters']['exclude_high_m2']
+                },
+                'visualization': {
+                    'colors': colors,
+                    'scale_design': scale_design,
+                    'palette_design': palette_design
                 }
             }
             st.markdown(get_json_download_link(export_data, "parameters.json"), unsafe_allow_html=True)
@@ -1120,283 +1253,320 @@ if n_total_points > 0:
         st.header("📊 Visualization")
         
         # 1. Experimental Data
-        fig1 = create_publication_figure(
-            "Experimental Data",
-            "Temperature (°C)",
-            "[OH]"
-        )
+        col1, col2 = st.columns(2)
         
-        fig1.add_trace(go.Scatter(
-            x=results['data']['T_C'],
-            y=results['data']['OH_exp'],
-            mode='markers',
-            marker=dict(
-                size=PUBLICATION_STYLE['marker_size'],
-                color='black',
-                symbol='circle',
-                line=dict(width=1, color='black')
-            ),
-            name='Experimental data',
-            showlegend=True
-        ))
-        
-        # Add physical boundaries
-        fig1.add_hline(
-            y=Acc_value, 
-            line=dict(color='red', width=1, dash='dash'),
-            annotation_text=f'[Acc] = {Acc_value:.3f}',
-            annotation_position="top right",
-            annotation_font=dict(size=12, color='red')
-        )
-        
-        fig1.add_hline(
-            y=0, 
-            line=dict(color='blue', width=1, dash='dash'),
-            annotation_text='[OH] = 0',
-            annotation_position="bottom right",
-            annotation_font=dict(size=12, color='blue')
-        )
-        
-        st.plotly_chart(fig1, use_container_width=True)
-        
-        # 2. Method 1: ln(Kw) vs 1000/T
-        fig2 = create_publication_figure(
-            "Method 1: ln(Kw) vs 1000/T",
-            "1000/T (K⁻¹)",
-            "ln(Kw)"
-        )
-        
-        fig2.add_trace(go.Scatter(
-            x=results['method1']['x_m1'],
-            y=results['method1']['ln_Kw'],
-            mode='markers',
-            marker=dict(
-                size=PUBLICATION_STYLE['marker_size'],
-                color='blue',
-                symbol='circle',
-                line=dict(width=1, color='black')
-            ),
-            name='Data points',
-            showlegend=True
-        ))
-        
-        # Regression line
-        x_min = min(results['method1']['x_m1'])
-        x_max = max(results['method1']['x_m1'])
-        x_fit = np.linspace(x_min, x_max, 100)
-        y_fit = results['method1']['slope'] * x_fit + results['method1']['intercept']
-        
-        fig2.add_trace(go.Scatter(
-            x=x_fit,
-            y=y_fit,
-            mode='lines',
-            line=dict(
-                color='red', 
-                width=PUBLICATION_STYLE['line_width']
-            ),
-            name=f'Linear fit: R² = {results["method1"]["r_squared"]:.4f}<br>ΔH = {results["method1"]["dH"]/1000:.1f} kJ/mol',
-            showlegend=True
-        ))
-        
-        st.plotly_chart(fig2, use_container_width=True)
-        
-        # 3. Method 2: Combined Fitting and Residuals (Rietveld-style)
-        fig3 = create_combined_fitting_figure(
-            "Method 2: Profile Fitting with Residuals",
-            "Temperature (°C)",
-            "[OH]",
-            "[OH]<sub>exp</sub> - [OH]<sub>model</sub>"
-        )
-        
-        # Top plot: Experimental and model
-        fig3.add_trace(go.Scatter(
-            x=results['method2']['T_C'],
-            y=results['method2']['OH_exp'],
-            mode='markers',
-            marker=dict(
-                size=PUBLICATION_STYLE['marker_size'],
-                color='green',
-                symbol='circle',
-                line=dict(width=1, color='black')
-            ),
-            name='Experimental data',
-            showlegend=True
-        ), row=1, col=1)
-        
-        # Model curve
-        T_fit = np.linspace(min(results['data']['T_C']), max(results['data']['T_C']), 200)
-        T_K_fit = T_fit + 273.15
-        OH_fit = analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, 
-                                        results['method2']['dH'], results['method2']['dS'])
-        
-        fig3.add_trace(go.Scatter(
-            x=T_fit,
-            y=OH_fit,
-            mode='lines',
-            line=dict(
-                color='orange', 
-                width=PUBLICATION_STYLE['line_width']
-            ),
-            name=f'Model fit: R² = {results["method2"]["R2"]:.4f}<br>ΔH = {results["method2"]["dH"]/1000:.1f} kJ/mol',
-            showlegend=True
-        ), row=1, col=1)
-        
-        # Bottom plot: Residuals
-        fig3.add_trace(go.Scatter(
-            x=results['method2']['T_C'],
-            y=results['method2']['residuals'],
-            mode='markers',
-            marker=dict(
-                size=PUBLICATION_STYLE['marker_size'] - 2,
-                color='red',
-                symbol='circle',
-                line=dict(width=0.5, color='black')
-            ),
-            name='Residuals',
-            showlegend=False
-        ), row=2, col=1)
-        
-        # Add zero line to residuals
-        fig3.add_hline(
-            y=0, 
-            line=dict(color='black', width=1),
-            row=2, col=1
-        )
-        
-        st.plotly_chart(fig3, use_container_width=True)
-        
-        # 4. Method Comparison - ИЗМЕНЕНО: с учетом виджетов
-        fig4 = create_publication_figure(
-            "Comparison of Methods",
-            "Temperature (°C)",
-            "[OH]"
-        )
-        
-        # Method 1 curve (только если выбрано в виджете)
-        if show_method1_comparison:
-            OH_fit_m1 = analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, 
-                                              results['method1']['dH'], results['method1']['dS'])
+        with col1:
+            fig1 = create_publication_figure(
+                "Experimental Data",
+                "Temperature (°C)",
+                "[OH]"
+            )
             
-            fig4.add_trace(go.Scatter(
-                x=T_fit,
-                y=OH_fit_m1,
-                mode='lines',
-                line=dict(
-                    color='blue', 
-                    width=PUBLICATION_STYLE['line_width'],
-                    dash='dash'
-                ),
-                name=f'Method 1: ΔH = {results["method1"]["dH"]/1000:.1f} kJ/mol',
-                showlegend=True
-            ))
-        
-        # Method 2 curve (только если выбрано в виджете)
-        if show_method2_comparison:
-            OH_fit_m2 = analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, 
-                                              results['method2']['dH'], results['method2']['dS'])
-            
-            # Определяем легенду в зависимости от видимости Method 1
-            if show_method1_comparison:
-                legend_name = f'Method 2: ΔH = {results["method2"]["dH"]/1000:.1f} kJ/mol'
-            else:
-                legend_name = 'Modelled data'
-            
-            fig4.add_trace(go.Scatter(
-                x=T_fit,
-                y=OH_fit_m2,
-                mode='lines',
-                line=dict(
-                    color='red', 
-                    width=PUBLICATION_STYLE['line_width']
-                ),
-                name=legend_name,
-                showlegend=True
-            ))
-        
-        # Experimental points (только если выбрано в виджете)
-        if show_experimental_comparison:
-            fig4.add_trace(go.Scatter(
+            fig1.add_trace(go.Scatter(
                 x=results['data']['T_C'],
                 y=results['data']['OH_exp'],
                 mode='markers',
                 marker=dict(
-                    size=PUBLICATION_STYLE['marker_size']-2,
-                    color='black',
+                    size=PUBLICATION_STYLE['marker_size'],
+                    color=colors['experimental'],
                     symbol='circle',
-                    opacity=0.7,
-                    line=dict(width=0.5, color='black')
+                    line=dict(width=1, color='black')
                 ),
                 name='Experimental data',
                 showlegend=True
             ))
-        
-        # Если ничего не выбрано, показываем сообщение
-        if not (show_method1_comparison or show_method2_comparison or show_experimental_comparison):
-            fig4.add_annotation(
-                x=0.5,
-                y=0.5,
-                xref="paper",
-                yref="paper",
-                text="Select at least one curve to display",
-                showarrow=False,
-                font=dict(size=16, color="gray")
+            
+            # Add physical boundaries
+            fig1.add_hline(
+                y=Acc_value, 
+                line=dict(color='red', width=1, dash='dash'),
+                annotation_text=f'[Acc] = {Acc_value:.3f}',
+                annotation_position="top right",
+                annotation_font=dict(size=12, color='red')
             )
+            
+            fig1.add_hline(
+                y=0, 
+                line=dict(color='blue', width=1, dash='dash'),
+                annotation_text='[OH] = 0',
+                annotation_position="bottom right",
+                annotation_font=dict(size=12, color='blue')
+            )
+            
+            st.plotly_chart(fig1, use_container_width=False)
         
-        st.plotly_chart(fig4, use_container_width=True)
-        
-        # 5. Temperature Dependence of Kw
-        fig5 = create_publication_figure(
-            "Temperature Dependence of Kw",
-            "Temperature (°C)",
-            "ln(Kw)"
-        )
-        
-        # Calculate Kw for both methods
-        Kw_m1 = np.exp(-results['method1']['dH']/(R * T_K_fit) + results['method1']['dS']/R)
-        Kw_m2 = np.exp(-results['method2']['dH']/(R * T_K_fit) + results['method2']['dS']/R)
-        
-        fig5.add_trace(go.Scatter(
-            x=T_fit,
-            y=np.log(Kw_m1),
-            mode='lines',
-            line=dict(
-                color='blue', 
-                width=PUBLICATION_STYLE['line_width'],
-                dash='dash'
-            ),
-            name='Method 1',
-            showlegend=True
-        ))
-        
-        fig5.add_trace(go.Scatter(
-            x=T_fit,
-            y=np.log(Kw_m2),
-            mode='lines',
-            line=dict(
-                color='red', 
-                width=PUBLICATION_STYLE['line_width']
-            ),
-            name='Method 2',
-            showlegend=True
-        ))
-        
-        # Experimental Kw points
-        if len(results['method1']['T_valid']) > 0:
-            fig5.add_trace(go.Scatter(
-                x=results['method1']['T_valid'] - 273.15,
-                y=np.log(results['method1']['Kw_valid']),
+        # 2. Method 1: ln(Kw) vs 1000/T
+        with col2:
+            fig2 = create_publication_figure(
+                "Method 1: ln(Kw) vs 1000/T",
+                "1000/T (K⁻¹)",
+                "ln(Kw)"
+            )
+            
+            fig2.add_trace(go.Scatter(
+                x=results['method1']['x_m1'],
+                y=results['method1']['ln_Kw'],
                 mode='markers',
                 marker=dict(
-                    size=PUBLICATION_STYLE['marker_size']-2,
-                    color='black',
+                    size=PUBLICATION_STYLE['marker_size'],
+                    color=colors['experimental'],
+                    symbol='circle',
+                    line=dict(width=1, color='black')
+                ),
+                name='Data points',
+                showlegend=True
+            ))
+            
+            # Regression line
+            x_min = min(results['method1']['x_m1'])
+            x_max = max(results['method1']['x_m1'])
+            x_fit = np.linspace(x_min, x_max, 100)
+            y_fit = results['method1']['slope'] * x_fit + results['method1']['intercept']
+            
+            fig2.add_trace(go.Scatter(
+                x=x_fit,
+                y=y_fit,
+                mode='lines',
+                line=dict(
+                    color=colors['method1'], 
+                    width=PUBLICATION_STYLE['line_width']
+                ),
+                name=f'Linear fit: R² = {results["method1"]["r_squared"]:.4f}<br>ΔH = {results["method1"]["dH"]/1000:.1f} kJ/mol',
+                showlegend=True
+            ))
+            
+            st.plotly_chart(fig2, use_container_width=False)
+        
+        # 3. Method 2: Combined Fitting and Residuals (Rietveld-style)
+        st.markdown("### Method 2: Profile Fitting with Residuals")
+        col3, col4 = st.columns([3, 1])
+        
+        with col3:
+            fig3 = create_combined_fitting_figure(
+                "Method 2: Profile Fitting with Residuals",
+                "Temperature (°C)",
+                "[OH]",
+                "[OH]<sub>exp</sub> - [OH]<sub>model</sub>"
+            )
+            
+            # Top plot: Experimental and model
+            fig3.add_trace(go.Scatter(
+                x=results['method2']['T_C'],
+                y=results['method2']['OH_exp'],
+                mode='markers',
+                marker=dict(
+                    size=PUBLICATION_STYLE['marker_size'],
+                    color=colors['experimental'],
+                    symbol='circle',
+                    line=dict(width=1, color='black')
+                ),
+                name='Experimental data',
+                showlegend=True
+            ), row=1, col=1)
+            
+            # Model curve
+            T_fit = np.linspace(min(results['data']['T_C']), max(results['data']['T_C']), 200)
+            T_K_fit = T_fit + 273.15
+            OH_fit = analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, 
+                                            results['method2']['dH'], results['method2']['dS'])
+            
+            fig3.add_trace(go.Scatter(
+                x=T_fit,
+                y=OH_fit,
+                mode='lines',
+                line=dict(
+                    color=colors['method2'], 
+                    width=PUBLICATION_STYLE['line_width']
+                ),
+                name=f'Model fit: R² = {results["method2"]["R2"]:.4f}<br>ΔH = {results["method2"]["dH"]/1000:.1f} kJ/mol',
+                showlegend=True
+            ), row=1, col=1)
+            
+            # Bottom plot: Residuals
+            fig3.add_trace(go.Scatter(
+                x=results['method2']['T_C'],
+                y=results['method2']['residuals'],
+                mode='markers',
+                marker=dict(
+                    size=PUBLICATION_STYLE['marker_size'] - 2,
+                    color='red',
                     symbol='circle',
                     line=dict(width=0.5, color='black')
                 ),
-                name='Experimental (Method 1)',
+                name='Residuals',
+                showlegend=False
+            ), row=2, col=1)
+            
+            # Add zero line to residuals
+            fig3.add_hline(
+                y=0, 
+                line=dict(color='black', width=1),
+                row=2, col=1
+            )
+            
+            st.plotly_chart(fig3, use_container_width=False)
+        
+        with col4:
+            st.markdown("#### Residuals Scale")
+            if scale_design == "Linear":
+                st.markdown("**Linear scale**")
+                st.markdown("Residuals shown as-is")
+            elif scale_design == "Logarithmic":
+                st.markdown("**Logarithmic scale**")
+                st.markdown("log(|residuals| + ε)")
+            else:  # Symmetric
+                st.markdown("**Symmetric scale**")
+                st.markdown("± symmetric range")
+            
+            st.markdown("---")
+            st.markdown("#### Legend")
+            st.markdown(f"<span style='color:{colors['experimental']}'>●</span> Experimental data", unsafe_allow_html=True)
+            st.markdown(f"<span style='color:{colors['method1']}'>━━━</span> Method 1", unsafe_allow_html=True)
+            st.markdown(f"<span style='color:{colors['method2']}'>━━━</span> Method 2", unsafe_allow_html=True)
+        
+        # 4. Method Comparison
+        st.markdown("### Comparison of Methods")
+        col5, col6 = st.columns(2)
+        
+        with col5:
+            fig4 = create_publication_figure(
+                "Comparison of Methods",
+                "Temperature (°C)",
+                "[OH]"
+            )
+            
+            # Method 1 curve (только если выбрано в виджете)
+            if show_method1_comparison:
+                OH_fit_m1 = analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, 
+                                                  results['method1']['dH'], results['method1']['dS'])
+                
+                fig4.add_trace(go.Scatter(
+                    x=T_fit,
+                    y=OH_fit_m1,
+                    mode='lines',
+                    line=dict(
+                        color=colors['method1'], 
+                        width=PUBLICATION_STYLE['line_width'],
+                        dash='dash'
+                    ),
+                    name=f'Method 1: ΔH = {results["method1"]["dH"]/1000:.1f} kJ/mol',
+                    showlegend=True
+                ))
+            
+            # Method 2 curve (только если выбрано в виджете)
+            if show_method2_comparison:
+                OH_fit_m2 = analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, 
+                                                  results['method2']['dH'], results['method2']['dS'])
+                
+                # Определяем легенду в зависимости от видимости Method 1
+                if show_method1_comparison:
+                    legend_name = f'Method 2: ΔH = {results["method2"]["dH"]/1000:.1f} kJ/mol'
+                else:
+                    legend_name = 'Modelled data'
+                
+                fig4.add_trace(go.Scatter(
+                    x=T_fit,
+                    y=OH_fit_m2,
+                    mode='lines',
+                    line=dict(
+                        color=colors['method2'], 
+                        width=PUBLICATION_STYLE['line_width']
+                    ),
+                    name=legend_name,
+                    showlegend=True
+                ))
+            
+            # Experimental points (только если выбрано в виджете)
+            if show_experimental_comparison:
+                fig4.add_trace(go.Scatter(
+                    x=results['data']['T_C'],
+                    y=results['data']['OH_exp'],
+                    mode='markers',
+                    marker=dict(
+                        size=PUBLICATION_STYLE['marker_size']-2,
+                        color=colors['experimental'],
+                        symbol='circle',
+                        opacity=0.7,
+                        line=dict(width=0.5, color='black')
+                    ),
+                    name='Experimental data',
+                    showlegend=True
+                ))
+            
+            # Если ничего не выбрано, показываем сообщение
+            if not (show_method1_comparison or show_method2_comparison or show_experimental_comparison):
+                fig4.add_annotation(
+                    x=0.5,
+                    y=0.5,
+                    xref="paper",
+                    yref="paper",
+                    text="Select at least one curve to display",
+                    showarrow=False,
+                    font=dict(size=16, color="gray")
+                )
+            
+            st.plotly_chart(fig4, use_container_width=False)
+        
+        # 5. Temperature Dependence of Kw
+        with col6:
+            fig5 = create_publication_figure(
+                "Temperature Dependence of Kw",
+                "Temperature (°C)",
+                "ln(Kw)"
+            )
+            
+            # Calculate Kw for both methods
+            Kw_m1 = np.exp(-results['method1']['dH']/(R * T_K_fit) + results['method1']['dS']/R)
+            Kw_m2 = np.exp(-results['method2']['dH']/(R * T_K_fit) + results['method2']['dS']/R)
+            
+            fig5.add_trace(go.Scatter(
+                x=T_fit,
+                y=np.log(Kw_m1),
+                mode='lines',
+                line=dict(
+                    color=colors['method1'], 
+                    width=PUBLICATION_STYLE['line_width'],
+                    dash='dash'
+                ),
+                name='Method 1',
                 showlegend=True
             ))
+            
+            fig5.add_trace(go.Scatter(
+                x=T_fit,
+                y=np.log(Kw_m2),
+                mode='lines',
+                line=dict(
+                    color=colors['method2'], 
+                    width=PUBLICATION_STYLE['line_width']
+                ),
+                name='Method 2',
+                showlegend=True
+            ))
+            
+            # Experimental Kw points
+            if len(results['method1']['T_valid']) > 0:
+                fig5.add_trace(go.Scatter(
+                    x=results['method1']['T_valid'] - 273.15,
+                    y=np.log(results['method1']['Kw_valid']),
+                    mode='markers',
+                    marker=dict(
+                        size=PUBLICATION_STYLE['marker_size']-2,
+                        color=colors['experimental'],
+                        symbol='circle',
+                        line=dict(width=0.5, color='black')
+                    ),
+                    name='Experimental (Method 1)',
+                    showlegend=True
+                ))
+            
+            st.plotly_chart(fig5, use_container_width=False)
         
-        st.plotly_chart(fig5, use_container_width=True)
+        # 6. 3D Surface Plot (обязательно генерируется)
+        st.markdown("### 3D Surface Plot")
+        fig6 = create_3d_surface(results, colors, palette_design)
+        if fig6:
+            st.plotly_chart(fig6, use_container_width=True)
         
         # ====================================================================
         # COMMENTS AND RECOMMENDATIONS
@@ -1474,8 +1644,10 @@ else:
     ✅ **Bold axis titles** with larger font size  
     ✅ **Rietveld-style combined plots** (fitting + residuals)  
     ✅ **Correct point exclusion logic**  
-    ✅ **Active widgets in Additional Options**  
-    ✅ **Customizable comparison plot** with show/hide options  
+    ✅ **Customizable colors** for experimental data and models  
+    ✅ **3D surface plot** with adjustable palette  
+    ✅ **Compact graph layout** with proper sizing  
+    ✅ **12 ppt axis values, 16 ppt axis labels**  
     
     ## 📊 Data Format
     
@@ -1498,3 +1670,4 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
