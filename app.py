@@ -555,7 +555,7 @@ def create_combined_fitting_figure(title, x_title, y_title_top, y_title_bottom, 
         paper_bgcolor='white',
         width=width,
         height=height,
-        margin=dict(l=80, r=40, t=100, b=80),
+        margin=dict(l=80, r=100, t=100, b=80),  # Увеличиваем правый отступ для цветовой шкалы
         font=dict(
             family=PUBLICATION_STYLE['font_family'],
             size=PUBLICATION_STYLE['font_size'],
@@ -576,25 +576,6 @@ def create_combined_fitting_figure(title, x_title, y_title_top, y_title_bottom, 
             yanchor='top'
         ),
         showlegend=True
-    )
-    
-    # Update layout to accommodate colorbar
-    fig.update_layout(
-        margin=dict(l=80, r=100, t=100, b=80),  # Увеличиваем правый отступ для цветовой шкалы
-        legend=dict(
-            font=dict(
-                family=PUBLICATION_STYLE['font_family'],
-                size=PUBLICATION_STYLE['legend_font_size'],
-                color='black'
-            ),
-            bordercolor='black',
-            borderwidth=1,
-            bgcolor='rgba(255,255,255,0.9)',
-            x=0.98,
-            y=0.98,
-            xanchor='right',
-            yanchor='top'
-        )
     )
     
     return fig
@@ -1379,13 +1360,14 @@ if n_total_points > 0:
                 "[OH]",
                 "[OH]<sub>exp</sub> - [OH]<sub>model</sub>"
             )
-
+        
             # Top plot: Model fit
             T_fit = np.linspace(min(results['data']['T_C']), max(results['data']['T_C']), 200)
             T_K_fit = T_fit + 273.15
             OH_fit = analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, 
                                             results['method2']['dH'], results['method2']['dS'])
             
+            # Add model curve
             fig3.add_trace(go.Scatter(
                 x=T_fit,
                 y=OH_fit,
@@ -1398,7 +1380,7 @@ if n_total_points > 0:
                 showlegend=True
             ), row=1, col=1)
             
-            # Экспериментальные точки
+            # Добавляем экспериментальные точки в верхний график
             fig3.add_trace(go.Scatter(
                 x=results['method2']['T_C'],
                 y=results['method2']['OH_exp'],
@@ -1413,99 +1395,54 @@ if n_total_points > 0:
                 showlegend=True
             ), row=1, col=1)
             
-            # ────────────────────────────────────────────────────────────────
-            # Residuals plot с цветовой шкалой (исправленный вариант)
-            # ────────────────────────────────────────────────────────────────
+            # Bottom plot: Residuals с тепловой шкалой
             residuals = results['method2']['residuals']
-            
-            if len(residuals) > 0 and np.any(residuals != 0):
+            if len(residuals) > 0:
                 abs_residuals = np.abs(residuals)
-                max_abs = max(np.max(abs_residuals), 1e-10)  # защита от нуля
+                max_abs = np.max(abs_residuals) if np.max(abs_residuals) > 0 else 1.0
                 
-                # Основные точки остатков с цветом
-                fig3.add_trace(
-                    go.Scatter(
-                        x=results['method2']['T_C'],
-                        y=residuals,
-                        mode='markers',
-                        marker=dict(
-                            size=PUBLICATION_STYLE['marker_size'] - 2,
-                            color=abs_residuals,
-                            colorscale='RdBu_r',
-                            cmin=0,
-                            cmax=max_abs,
-                            showscale=True,
-                            colorbar=dict(
-                                title='|Δ[OH]|',
-                                titleside='right',
-                                thickness=15,
-                                len=0.35,
-                                y=0.15,               # положение в нижней части
-                                x=1.02,
-                                xanchor='left',
-                                yanchor='middle'
-                            )
+                # Добавляем остатки с цветом по величине
+                fig3.add_trace(go.Scatter(
+                    x=results['method2']['T_C'],
+                    y=results['method2']['residuals'],
+                    mode='markers',
+                    marker=dict(
+                        size=PUBLICATION_STYLE['marker_size'] - 2,
+                        color=abs_residuals,  # Используем числовые значения
+                        colorscale='RdBu_r',  # Обратная шкала Red-Blue
+                        cmin=0,
+                        cmax=max_abs,
+                        showscale=True,  # Показываем цветовую шкалу
+                        colorbar=dict(
+                            title='|Δ[OH]|',
+                            titleside='right',
+                            thickness=15,
+                            len=0.3,
+                            x=1.02,
+                            y=0.5,
+                            yanchor='middle'
                         ),
-                        name='Residuals',
-                        showlegend=False
+                        symbol='circle',
+                        line=dict(width=0.5, color='black')
                     ),
-                    row=2, col=1
-                )
+                    name='Residuals',
+                    showlegend=False
+                ), row=2, col=1)
             else:
-                # Если все остатки нулевые или массив пустой
-                fig3.add_trace(
-                    go.Scatter(
-                        x=results['method2']['T_C'],
-                        y=np.zeros_like(results['method2']['T_C']),
-                        mode='markers',
-                        marker=dict(size=6, color='grey', symbol='circle'),
-                        name='Residuals (all zero)',
-                        showlegend=True
+                # Fallback если нет остатков
+                fig3.add_trace(go.Scatter(
+                    x=results['method2']['T_C'],
+                    y=results['method2']['residuals'],
+                    mode='markers',
+                    marker=dict(
+                        size=PUBLICATION_STYLE['marker_size'] - 2,
+                        color='red',
+                        symbol='circle',
+                        line=dict(width=0.5, color='black')
                     ),
-                    row=2, col=1
-                )
-            
-            # Нулевая линия на графике остатков
-            fig3.add_hline(
-                y=0, 
-                line=dict(color='black', width=1),
-                row=2, col=1
-            )
-            
-            st.plotly_chart(fig3, use_container_width=False)
-        
-            # Model curve
-            T_fit = np.linspace(min(results['data']['T_C']), max(results['data']['T_C']), 200)
-            T_K_fit = T_fit + 273.15
-            OH_fit = analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, 
-                                            results['method2']['dH'], results['method2']['dS'])
-            
-            fig3.add_trace(go.Scatter(
-                x=T_fit,
-                y=OH_fit,
-                mode='lines',
-                line=dict(
-                    color=colors['method2'], 
-                    width=PUBLICATION_STYLE['line_width']
-                ),
-                name=f'Model fit: R² = {results["method2"]["R2"]:.4f}<br>ΔH = {results["method2"]["dH"]/1000:.1f} kJ/mol',
-                showlegend=True
-            ), row=1, col=1)
-            
-            # Bottom plot: Residuals
-            fig3.add_trace(go.Scatter(
-                x=results['method2']['T_C'],
-                y=results['method2']['residuals'],
-                mode='markers',
-                marker=dict(
-                    size=PUBLICATION_STYLE['marker_size'] - 2,
-                    color='red',
-                    symbol='circle',
-                    line=dict(width=0.5, color='black')
-                ),
-                name='Residuals',
-                showlegend=False
-            ), row=2, col=1)
+                    name='Residuals',
+                    showlegend=False
+                ), row=2, col=1)
             
             # Add zero line to residuals
             fig3.add_hline(
@@ -1780,21 +1717,4 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
