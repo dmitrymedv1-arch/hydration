@@ -1380,136 +1380,129 @@ if n_total_points > 0:
                 "[OH]",
                 "[OH]<sub>exp</sub> - [OH]<sub>model</sub>"
             )
-
-            # Bottom plot: Residuals with thermal scale
-            # Calculate color scale based on residual values
-            residuals = results['method2']['residuals']
-            abs_residuals = np.abs(residuals)
+        
+            # Top plot: Model fit
+            T_fit = np.linspace(min(results['data']['T_C']), max(results['data']['T_C']), 200)
+            T_K_fit = T_fit + 273.15
+            OH_fit = analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, 
+                                            results['method2']['dH'], results['method2']['dS'])
             
+            # Add model curve
+            fig3.add_trace(go.Scatter(
+                x=T_fit,
+                y=OH_fit,
+                mode='lines',
+                line=dict(
+                    color=colors['method2'], 
+                    width=PUBLICATION_STYLE['line_width']
+                ),
+                name=f'Model fit: R² = {results["method2"]["R2"]:.4f}',
+                showlegend=True
+            ), row=1, col=1)
+            
+            # Bottom plot: Residuals с тепловой шкалой
+            residuals = results['method2']['residuals']
             if len(residuals) > 0:
+                abs_residuals = np.abs(residuals)
                 max_abs = np.max(abs_residuals) if np.max(abs_residuals) > 0 else 1.0
-                # Normalize for color scale (0-1)
+                
+                # Создаем цветовую шкалу
+                # ВАЖНО: colorbar должен быть добавлен к trace на верхнем графике
+                # Создаем dummy trace для colorbar в верхнем графике
+                fig3.add_trace(go.Scatter(
+                    x=[None],  # Пустые данные
+                    y=[None],
+                    mode='markers',
+                    marker=dict(
+                        colorscale='RdBu_r',
+                        showscale=True,
+                        cmin=0,
+                        cmax=max_abs,
+                        colorbar=dict(
+                            title=dict(
+                                text='|Δ[OH]|',
+                                font=dict(
+                                    family=PUBLICATION_STYLE['font_family'],
+                                    size=10,
+                                    color='black'
+                                )
+                            ),
+                            titleside='right',
+                            thickness=15,
+                            len=0.3,
+                            x=1.02,
+                            y=0.5,
+                            yanchor='middle',
+                            tickfont=dict(
+                                family=PUBLICATION_STYLE['font_family'],
+                                size=10,
+                                color='black'
+                            ),
+                            ticks='outside'
+                        )
+                    ),
+                    showlegend=False
+                ), row=1, col=1)
+                
+                # Добавляем остатки с цветом по величине
                 colors_normalized = abs_residuals / max_abs
-                
-                # Create color scale from blue (small) to red (large)
-                colorscale = [
-                    [0.0, 'blue'],      # Small residuals
-                    [0.5, 'white'],     # Medium
-                    [1.0, 'red']        # Large residuals
-                ]
-                
-                # Create color values
-                marker_colors = []
-                for val in colors_normalized:
-                    if val < 0.5:
-                        # Interpolate between blue and white
-                        r = int(255 * (val * 2))
-                        g = int(255 * (val * 2))
-                        b = 255
-                    else:
-                        # Interpolate between white and red
-                        r = 255
-                        g = int(255 * (2 - val * 2))
-                        b = int(255 * (2 - val * 2))
-                    marker_colors.append(f'rgb({r},{g},{b})')
-                
-                # 3. Method 2: Combined Fitting and Residuals (Rietveld-style)
-                st.markdown("### Method 2: Profile Fitting with Residuals")
-                col3, col4 = st.columns([3, 1])
-                
-                with col3:
-                    fig3 = create_combined_fitting_figure(
-                        "Method 2: Profile Fitting with Residuals",
-                        "Temperature (°C)",
-                        "[OH]",
-                        "[OH]<sub>exp</sub> - [OH]<sub>model</sub>"
-                    )
-                
-                    # Top plot: Model fit
-                    T_fit = np.linspace(min(results['data']['T_C']), max(results['data']['T_C']), 200)
-                    T_K_fit = T_fit + 273.15
-                    OH_fit = analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, 
-                                                    results['method2']['dH'], results['method2']['dS'])
-                    
-                    # Add model curve
-                    fig3.add_trace(go.Scatter(
-                        x=T_fit,
-                        y=OH_fit,
-                        mode='lines',
-                        line=dict(
-                            color=colors['method2'], 
-                            width=PUBLICATION_STYLE['line_width']
-                        ),
-                        name=f'Model fit: R² = {results["method2"]["R2"]:.4f}',
-                        showlegend=True
-                    ), row=1, col=1)
-                    
-                    # Add experimental points to top plot
-                    fig3.add_trace(go.Scatter(
-                        x=results['method2']['T_C'],
-                        y=results['method2']['OH_exp'],
-                        mode='markers',
-                        marker=dict(
-                            size=PUBLICATION_STYLE['marker_size'],
-                            color=colors['experimental'],
-                            symbol='circle',
-                            line=dict(width=1, color='black')
-                        ),
-                        name='Experimental data',
-                        showlegend=False
-                    ), row=1, col=1)
-                    
-                    # Bottom plot: Residuals
-                    # Простая версия без цветовой шкалы
-                    residuals = results['method2']['residuals']
-                    if len(residuals) > 0:
-                        # Рассчитываем цвет для каждого маркера на основе величины остатка
-                        abs_residuals = np.abs(residuals)
-                        if np.max(abs_residuals) > 0:
-                            # Нормализуем значения для цвета
-                            colors_normalized = abs_residuals / np.max(abs_residuals)
-                            # Создаем список цветов от синего к красному
-                            marker_colors = []
-                            for val in colors_normalized:
-                                if val < 0.5:
-                                    # От синего к белому
-                                    r = int(255 * (val * 2))
-                                    g = int(255 * (val * 2))
-                                    b = 255
-                                else:
-                                    # От белого к красному
-                                    r = 255
-                                    g = int(255 * (2 - val * 2))
-                                    b = int(255 * (2 - val * 2))
-                                marker_colors.append(f'rgb({r},{g},{b})')
-                        else:
-                            marker_colors = ['rgb(128,128,128)'] * len(residuals)
-                    else:
-                        marker_colors = ['rgb(128,128,128)']
-                    
-                    fig3.add_trace(go.Scatter(
-                        x=results['method2']['T_C'],
-                        y=results['method2']['residuals'],
-                        mode='markers',
-                        marker=dict(
-                            size=PUBLICATION_STYLE['marker_size'] - 2,
-                            color=marker_colors if len(residuals) > 0 else 'red',
-                            symbol='circle',
-                            line=dict(width=0.5, color='black'),
-                            showscale=False  # Отключаем цветовую шкалу
-                        ),
-                        name='Residuals',
-                        showlegend=False
-                    ), row=2, col=1)
-                    
-                    # Add zero line to residuals
-                    fig3.add_hline(
-                        y=0, 
-                        line=dict(color='black', width=1),
-                        row=2, col=1
-                    )
-                    
-                    st.plotly_chart(fig3, use_container_width=False)
+                # Используем встроенную colorscale через числовые значения
+                fig3.add_trace(go.Scatter(
+                    x=results['method2']['T_C'],
+                    y=results['method2']['residuals'],
+                    mode='markers',
+                    marker=dict(
+                        size=PUBLICATION_STYLE['marker_size'] - 2,
+                        color=abs_residuals,  # Используем числовые значения
+                        colorscale='RdBu_r',  # Обратная шкала Red-Blue
+                        cmin=0,
+                        cmax=max_abs,
+                        showscale=False,  # Не показываем шкалу здесь
+                        symbol='circle',
+                        line=dict(width=0.5, color='black')
+                    ),
+                    name='Residuals',
+                    showlegend=False
+                ), row=2, col=1)
+            else:
+                # Fallback если нет остатков
+                fig3.add_trace(go.Scatter(
+                    x=results['method2']['T_C'],
+                    y=results['method2']['residuals'],
+                    mode='markers',
+                    marker=dict(
+                        size=PUBLICATION_STYLE['marker_size'] - 2,
+                        color='red',
+                        symbol='circle',
+                        line=dict(width=0.5, color='black')
+                    ),
+                    name='Residuals',
+                    showlegend=False
+                ), row=2, col=1)
+            
+            # Добавляем экспериментальные точки в верхний график
+            fig3.add_trace(go.Scatter(
+                x=results['method2']['T_C'],
+                y=results['method2']['OH_exp'],
+                mode='markers',
+                marker=dict(
+                    size=PUBLICATION_STYLE['marker_size'],
+                    color=colors['experimental'],
+                    symbol='circle',
+                    line=dict(width=1, color='black')
+                ),
+                name='Experimental data',
+                showlegend=True
+            ), row=1, col=1)
+            
+            # Add zero line to residuals
+            fig3.add_hline(
+                y=0, 
+                line=dict(color='black', width=1),
+                row=2, col=1
+            )
+            
+            st.plotly_chart(fig3, use_container_width=False)
             else:
                 # Fallback if no residuals
                 fig3.add_trace(go.Scatter(
@@ -1832,6 +1825,7 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
 
 
 
