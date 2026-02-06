@@ -888,7 +888,11 @@ def create_3d_surface(results, colors, palette_design, use_log_pH2O):
                 linewidth=2,
                 linecolor='black',
                 showgrid=False,
-                type='log' if use_log_pH2O else 'linear'  # Добавляем тип шкалы
+                type='log' if use_log_pH2O else 'linear',
+                tickmode='auto',
+                exponentformat='power' if use_log_pH2O else 'none',
+                showexponent='all',
+                nticks=6 if use_log_pH2O else None
             ),
             zaxis=dict(
                 title='[OH]',
@@ -1679,6 +1683,7 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
 
 
 
