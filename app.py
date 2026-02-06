@@ -1422,11 +1422,13 @@ if n_total_points > 0:
                         color=abs_residuals,  # Цвет по величине остатка
                         colorscale='RdBu_r',  # Обратная шкала Red-Blue
                         colorbar=dict(
-                            title='|Δ[OH]|',
-                            titlefont=dict(
-                                family=PUBLICATION_STYLE['font_family'],
-                                size=10,
-                                color='black'
+                            title=dict(
+                                text='|Δ[OH]|',
+                                font=dict(
+                                    family=PUBLICATION_STYLE['font_family'],
+                                    size=10,
+                                    color='black'
+                                )
                             ),
                             titleside='right',
                             thickness=15,
@@ -1771,6 +1773,7 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
 
 
 
