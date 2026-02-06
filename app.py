@@ -1,4 +1,4 @@
-import streamlit as st
+import streamlit as stimport streamlit as st
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -233,7 +233,7 @@ def parse_input_data(input_text, file_uploader=None):
     return np.array(data), f"Загружено {len(data)} точек из текста"
 
 def validate_input_data(data_array, Acc):
-    """Валидация входных данных с учетом экспериментальных погрешностей"""
+    """Валидация входных данных"""
     if data_array is None or len(data_array) == 0:
         return False, "Нет данных для анализа"
     
@@ -241,221 +241,29 @@ def validate_input_data(data_array, Acc):
     OH = data_array[:, 1]
     
     issues = []
-    warnings = []
     
     # Проверка температуры
     if np.any(T_C < -273.15):
         issues.append("Есть температуры ниже абсолютного нуля")
     if np.any(T_C > 2000):
-        warnings.append("Есть подозрительно высокие температуры (>2000°C)")
+        issues.append("Есть подозрительно высокие температуры (>2000°C)")
     
     # Проверка концентраций
-    if np.any(OH < 0):
-        issues.append("Есть отрицательные концентрации [OH] (физически невозможно)")
-    if np.any(OH > Acc * 1.01):  # Допуск 1%
-        issues.append(f"Есть концентрации [OH] > [Acc] (физически невозможно)")
+    if np.any(OH <= 0):
+        issues.append("Есть неположительные концентрации [OH]")
+    if np.any(OH >= Acc):
+        issues.append("Есть концентрации [OH] >= [Acc] (физически невозможно)")
     
-    # Проверка на очень близкие к 0 значения
-    if np.any(OH < 1e-10):
-        warnings.append("Есть очень малые концентрации [OH] (< 1e-10)")
-    
-    # Проверка монотонности - смягченная версия
+    # Проверка монотонности (опционально)
     if len(T_C) > 1:
-        # Сортируем по температуре
         sorted_idx = np.argsort(T_C)
-        T_sorted = T_C[sorted_idx]
-        OH_sorted = OH[sorted_idx]
-        
-        # Проверяем общий тренд
-        delta_oh = np.diff(OH_sorted)
-        
-        # Считаем количество увеличений (физически необъяснимых)
-        significant_increases = np.sum(delta_oh > 0.01 * OH_sorted[:-1])  # >1% увеличение
-        
-        if significant_increases > 0:
-            # Проверяем, не связаны ли они с ошибками измерений
-            # Вычисляем среднее относительное изменение
-            avg_decrease = np.mean(np.abs(delta_oh[delta_oh < 0]) / OH_sorted[:-1][delta_oh < 0])
-            
-            if significant_increases / len(delta_oh) > 0.1:  # Если >10% точек имеют увеличение
-                warnings.append(f"Замечено {significant_increases} значительных увеличений [OH] с температурой")
-            else:
-                # Небольшие флуктуации - нормально для экспериментов
-                st.info(f"⚠️ Незначительные флуктуации в данных: {significant_increases} точек показывают увеличение [OH]")
-    
-    # Проверка диапазона концентраций
-    oh_range = np.max(OH) - np.min(OH)
-    if oh_range < 0.001:
-        warnings.append("Очень малый диапазон концентраций [OH] (< 0.001)")
+        if not np.all(np.diff(OH[sorted_idx]) <= 0):
+            issues.append("Концентрация [OH] не всегда убывает с температурой")
     
     if issues:
         return False, "; ".join(issues)
     
-    if warnings:
-        return True, f"Данные валидны. Предупреждения: {'; '.join(warnings)}"
-    
     return True, "Данные валидны"
-
-def check_data_quality_metrics(T_C, OH):
-    """Детальная проверка качества данных с метриками"""
-    metrics = {}
-    
-    # 1. Проверка на пропущенные значения
-    metrics['missing_values'] = np.sum(np.isnan(T_C)) + np.sum(np.isnan(OH))
-    
-    # 2. Количество точек
-    metrics['n_points'] = len(T_C)
-    
-    # 3. Температурный диапазон
-    metrics['T_min'] = np.min(T_C)
-    metrics['T_max'] = np.max(T_C)
-    metrics['T_range'] = metrics['T_max'] - metrics['T_min']
-    
-    # 4. Концентрационный диапазон
-    metrics['OH_min'] = np.min(OH)
-    metrics['OH_max'] = np.max(OH)
-    metrics['OH_range'] = metrics['OH_max'] - metrics['OH_min']
-    
-    # 5. Плотность точек
-    metrics['point_density'] = metrics['n_points'] / metrics['T_range'] if metrics['T_range'] > 0 else 0
-    
-    # 6. Проверка общего тренда
-    if len(T_C) > 2:
-        # Линейная аппроксимация для оценки тренда
-        coeffs = np.polyfit(T_C, OH, 1)
-        metrics['trend_slope'] = coeffs[0]
-        
-        # Экспоненциальная аппроксимация (чаще используется для таких процессов)
-        try:
-            # Преобразуем к линейной форме: ln(OH) = a/T + b
-            mask = OH > 0
-            if np.sum(mask) > 3:
-                coeffs_exp = np.polyfit(1/(T_C[mask] + 273.15), np.log(OH[mask]), 1)
-                metrics['exp_coeff'] = coeffs_exp[0]
-        except:
-            metrics['exp_coeff'] = None
-    
-    # 7. Оценка экспериментальной погрешности
-    if len(OH) > 1:
-        # Предполагаем, что погрешность порядка 1-5% от значения
-        relative_errors = []
-        for i in range(1, len(OH)):
-            if OH[i-1] > 0:
-                rel_err = abs(OH[i] - OH[i-1]) / OH[i-1]
-                if rel_err < 0.1:  # Исключаем скачки >10%
-                    relative_errors.append(rel_err)
-        
-        if relative_errors:
-            metrics['avg_relative_error'] = np.mean(relative_errors) * 100  # в процентах
-            metrics['max_relative_error'] = np.max(relative_errors) * 100
-    
-    return metrics
-
-# В основной части кода, после валидации, добавим:
-
-# После st.success(f"{load_message}. {valid_message}")
-st.success(f"{load_message}. {valid_message}")
-
-# Добавляем детальный анализ качества данных
-with st.expander("🔍 Анализ качества данных", expanded=True):
-    metrics = check_data_quality_metrics(T_C, OH_exp)
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.metric("Температурный диапазон", 
-                 f"{metrics['T_min']:.1f} - {metrics['T_max']:.1f} °C",
-                 delta=f"{metrics['T_range']:.1f} °C")
-        st.metric("Количество точек", metrics['n_points'])
-        
-    with col2:
-        st.metric("Концентрационный диапазон",
-                 f"{metrics['OH_min']:.4f} - {metrics['OH_max']:.4f}",
-                 delta=f"{metrics['OH_range']:.4f}")
-        
-        if 'point_density' in metrics:
-            st.metric("Плотность точек", f"{metrics['point_density']:.2f} точек/°C")
-    
-    with col3:
-        if 'trend_slope' in metrics:
-            trend_icon = "↘️" if metrics['trend_slope'] < 0 else "↗️" if metrics['trend_slope'] > 0 else "➡️"
-            st.metric("Общий тренд", f"{metrics['trend_slope']:.2e}", 
-                     delta=trend_icon)
-        
-        if 'avg_relative_error' in metrics:
-            error_color = "green" if metrics['avg_relative_error'] < 5 else "orange" if metrics['avg_relative_error'] < 10 else "red"
-            st.markdown(f"<h4 style='color:{error_color}'>Средняя погрешность: {metrics['avg_relative_error']:.1f}%</h4>", 
-                       unsafe_allow_html=True)
-    
-    # График для визуальной оценки качества
-    fig_quality = go.Figure()
-    
-    # Основные данные
-    fig_quality.add_trace(go.Scatter(
-        x=T_C, y=OH_exp,
-        mode='lines+markers',
-        marker=dict(size=8, color='blue'),
-        line=dict(color='lightblue', width=1, dash='dot'),
-        name='Экспериментальные данные'
-    ))
-    
-    # Скользящее среднее для выявления тренда
-    if len(T_C) > 5:
-        window = min(5, len(T_C) // 3)
-        rolling_mean = pd.Series(OH_exp).rolling(window=window, center=True).mean()
-        
-        fig_quality.add_trace(go.Scatter(
-            x=T_C,
-            y=rolling_mean,
-            mode='lines',
-            line=dict(color='red', width=2),
-            name=f'Скользящее среднее (окно={window})'
-        ))
-    
-    fig_quality.update_layout(
-        title='Качество экспериментальных данных',
-        xaxis_title='Температура (°C)',
-        yaxis_title='[OH]',
-        height=400,
-        showlegend=True
-    )
-    
-    st.plotly_chart(fig_quality, use_container_width=True)
-    
-    # Анализ не монотонности
-    if len(T_C) > 2:
-        sorted_idx = np.argsort(T_C)
-        T_sorted = T_C[sorted_idx]
-        OH_sorted = OH_exp[sorted_idx]
-        delta_oh = np.diff(OH_sorted)
-        
-        # Находим точки с увеличением
-        increase_idx = np.where(delta_oh > 0)[0]
-        
-        if len(increase_idx) > 0:
-            st.warning(f"Обнаружено {len(increase_idx)} увеличений [OH] с температурой")
-            
-            # Создаем таблицу с проблемными точками
-            problem_points = []
-            for idx in increase_idx:
-                problem_points.append({
-                    'Температура (°C)': f"{T_sorted[idx]:.1f} → {T_sorted[idx+1]:.1f}",
-                    'ΔT (°C)': f"{T_sorted[idx+1] - T_sorted[idx]:.1f}",
-                    '[OH]': f"{OH_sorted[idx]:.6f} → {OH_sorted[idx+1]:.6f}",
-                    'Δ[OH]': f"{delta_oh[idx]:.6f}",
-                    'Относит. изменение (%)': f"{(delta_oh[idx]/OH_sorted[idx]*100):.2f}"
-                })
-            
-            df_problems = pd.DataFrame(problem_points)
-            st.dataframe(df_problems, use_container_width=True)
-            
-            # Предлагаем решения
-            st.info("""
-            **Рекомендации:**
-            1. Проверьте, не являются ли эти точки выбросами
-            2. Используйте настройки исключения точек для их удаления
-            3. Если изменения в пределах погрешности измерений - можно игнорировать
-            """)
 
 # Функции для экспорта
 def get_table_download_link(df, filename="results.csv"):
@@ -1390,5 +1198,4 @@ if not calculate_btn:
     
     with st.expander("📈 Пример графика результатов"):
         st.image("https://via.placeholder.com/800x400?text=Пример+результатов", 
-
                 caption="Пример визуализации результатов")
