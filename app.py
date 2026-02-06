@@ -22,20 +22,23 @@ st.set_page_config(
 # Константы
 R = 8.314  # J/(mol·K)
 
-# Настройки стиля для публикаций
+# Настройки стиля для научных публикаций
 PUBLICATION_STYLE = {
-    'font_family': 'Times New Roman',
-    'font_size': 16,
+    'font_family': 'Times New Roman, serif',
+    'font_size': 14,
     'title_font_size': 18,
     'axis_title_font_size': 16,
-    'tick_font_size': 14,
-    'legend_font_size': 14,
-    'line_width': 2.5,
-    'marker_size': 10,
+    'tick_font_size': 12,
+    'legend_font_size': 12,
+    'line_width': 2.0,
+    'marker_size': 8,
     'grid_width': 0,
-    'axis_line_width': 2,
-    'tick_length': 6,
-    'tick_width': 1.5
+    'axis_line_width': 2.0,
+    'tick_length': 8,
+    'tick_width': 1.5,
+    'plot_width': 800,
+    'plot_height': 600,
+    'plot_ratio': 0.75  # 3:4 соотношение
 }
 
 # Инициализация session state
@@ -308,6 +311,281 @@ def validate_input_data(data_array, Acc):
     return True, "Data is valid"
 
 # ============================================================================
+# PLOTTING FUNCTIONS - UPDATED FOR SCIENTIFIC PUBLICATIONS
+# ============================================================================
+
+def create_publication_figure(title, x_title, y_title, width=None, height=None):
+    """Create publication-quality figure with correct aspect ratio"""
+    if width is None:
+        width = PUBLICATION_STYLE['plot_width']
+    if height is None:
+        height = int(width * PUBLICATION_STYLE['plot_ratio'])
+    
+    fig = go.Figure()
+    
+    fig.update_layout(
+        title=dict(
+            text=title,
+            font=dict(
+                family=PUBLICATION_STYLE['font_family'],
+                size=PUBLICATION_STYLE['title_font_size'],
+                color='black',
+                weight='bold'
+            ),
+            x=0.5,
+            xanchor='center',
+            y=0.95
+        ),
+        xaxis=dict(
+            title=dict(
+                text=x_title,
+                font=dict(
+                    family=PUBLICATION_STYLE['font_family'],
+                    size=PUBLICATION_STYLE['axis_title_font_size'],
+                    color='black',
+                    weight='bold'
+                )
+            ),
+            showline=True,
+            linewidth=PUBLICATION_STYLE['axis_line_width'],
+            linecolor='black',
+            mirror=True,
+            showgrid=False,
+            zeroline=False,
+            tickfont=dict(
+                family=PUBLICATION_STYLE['font_family'],
+                size=PUBLICATION_STYLE['tick_font_size'],
+                color='black'
+            ),
+            ticks='outside',
+            ticklen=PUBLICATION_STYLE['tick_length'],
+            tickwidth=PUBLICATION_STYLE['tick_width'],
+            tickcolor='black',
+            gridcolor='rgba(0,0,0,0)'
+        ),
+        yaxis=dict(
+            title=dict(
+                text=y_title,
+                font=dict(
+                    family=PUBLICATION_STYLE['font_family'],
+                    size=PUBLICATION_STYLE['axis_title_font_size'],
+                    color='black',
+                    weight='bold'
+                )
+            ),
+            showline=True,
+            linewidth=PUBLICATION_STYLE['axis_line_width'],
+            linecolor='black',
+            mirror=True,
+            showgrid=False,
+            zeroline=False,
+            tickfont=dict(
+                family=PUBLICATION_STYLE['font_family'],
+                size=PUBLICATION_STYLE['tick_font_size'],
+                color='black'
+            ),
+            ticks='outside',
+            ticklen=PUBLICATION_STYLE['tick_length'],
+            tickwidth=PUBLICATION_STYLE['tick_width'],
+            tickcolor='black',
+            gridcolor='rgba(0,0,0,0)'
+        ),
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        width=width,
+        height=height,
+        margin=dict(l=80, r=40, t=100, b=70),
+        font=dict(
+            family=PUBLICATION_STYLE['font_family'],
+            size=PUBLICATION_STYLE['font_size'],
+            color='black'
+        ),
+        legend=dict(
+            font=dict(
+                family=PUBLICATION_STYLE['font_family'],
+                size=PUBLICATION_STYLE['legend_font_size'],
+                color='black'
+            ),
+            bordercolor='black',
+            borderwidth=1,
+            bgcolor='rgba(255,255,255,0.9)',
+            x=0.02,
+            y=0.98,
+            xanchor='left',
+            yanchor='top'
+        ),
+        showlegend=True
+    )
+    
+    return fig
+
+def create_combined_fitting_figure(title, x_title, y_title_top, y_title_bottom, width=None, height=None):
+    """Create combined figure with main plot and residual plot below"""
+    if width is None:
+        width = PUBLICATION_STYLE['plot_width']
+    if height is None:
+        height = int(width * PUBLICATION_STYLE['plot_ratio'] * 1.4)  # Taller for two plots
+    
+    fig = make_subplots(
+        rows=2, cols=1,
+        row_heights=[0.7, 0.3],
+        vertical_spacing=0.05,
+        subplot_titles=('', ''),
+        shared_xaxes=True
+    )
+    
+    # Update layout for top plot
+    fig.update_xaxes(
+        title_text=x_title,
+        title_font=dict(
+            family=PUBLICATION_STYLE['font_family'],
+            size=PUBLICATION_STYLE['axis_title_font_size'],
+            color='black',
+            weight='bold'
+        ),
+        showline=True,
+        linewidth=PUBLICATION_STYLE['axis_line_width'],
+        linecolor='black',
+        mirror=True,
+        showgrid=False,
+        zeroline=False,
+        tickfont=dict(
+            family=PUBLICATION_STYLE['font_family'],
+            size=PUBLICATION_STYLE['tick_font_size'],
+            color='black'
+        ),
+        ticks='outside',
+        ticklen=PUBLICATION_STYLE['tick_length'],
+        tickwidth=PUBLICATION_STYLE['tick_width'],
+        tickcolor='black',
+        row=1, col=1
+    )
+    
+    fig.update_yaxes(
+        title_text=y_title_top,
+        title_font=dict(
+            family=PUBLICATION_STYLE['font_family'],
+            size=PUBLICATION_STYLE['axis_title_font_size'],
+            color='black',
+            weight='bold'
+        ),
+        showline=True,
+        linewidth=PUBLICATION_STYLE['axis_line_width'],
+        linecolor='black',
+        mirror=True,
+        showgrid=False,
+        zeroline=False,
+        tickfont=dict(
+            family=PUBLICATION_STYLE['font_family'],
+            size=PUBLICATION_STYLE['tick_font_size'],
+            color='black'
+        ),
+        ticks='outside',
+        ticklen=PUBLICATION_STYLE['tick_length'],
+        tickwidth=PUBLICATION_STYLE['tick_width'],
+        tickcolor='black',
+        row=1, col=1
+    )
+    
+    # Update layout for bottom plot (residuals)
+    fig.update_xaxes(
+        title_text=x_title,
+        title_font=dict(
+            family=PUBLICATION_STYLE['font_family'],
+            size=PUBLICATION_STYLE['axis_title_font_size'],
+            color='black',
+            weight='bold'
+        ),
+        showline=True,
+        linewidth=PUBLICATION_STYLE['axis_line_width'],
+        linecolor='black',
+        mirror=True,
+        showgrid=False,
+        zeroline=False,
+        tickfont=dict(
+            family=PUBLICATION_STYLE['font_family'],
+            size=PUBLICATION_STYLE['tick_font_size'],
+            color='black'
+        ),
+        ticks='outside',
+        ticklen=PUBLICATION_STYLE['tick_length'],
+        tickwidth=PUBLICATION_STYLE['tick_width'],
+        tickcolor='black',
+        row=2, col=1
+    )
+    
+    fig.update_yaxes(
+        title_text=y_title_bottom,
+        title_font=dict(
+            family=PUBLICATION_STYLE['font_family'],
+            size=PUBLICATION_STYLE['axis_title_font_size'],
+            color='black',
+            weight='bold'
+        ),
+        showline=True,
+        linewidth=PUBLICATION_STYLE['axis_line_width'],
+        linecolor='black',
+        mirror=True,
+        showgrid=False,
+        zeroline=True,
+        zerolinewidth=1,
+        zerolinecolor='black',
+        tickfont=dict(
+            family=PUBLICATION_STYLE['font_family'],
+            size=PUBLICATION_STYLE['tick_font_size'],
+            color='black'
+        ),
+        ticks='outside',
+        ticklen=PUBLICATION_STYLE['tick_length'],
+        tickwidth=PUBLICATION_STYLE['tick_width'],
+        tickcolor='black',
+        row=2, col=1
+    )
+    
+    # Update overall layout
+    fig.update_layout(
+        title=dict(
+            text=title,
+            font=dict(
+                family=PUBLICATION_STYLE['font_family'],
+                size=PUBLICATION_STYLE['title_font_size'],
+                color='black',
+                weight='bold'
+            ),
+            x=0.5,
+            xanchor='center',
+            y=0.98
+        ),
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        width=width,
+        height=height,
+        margin=dict(l=80, r=40, t=100, b=80),
+        font=dict(
+            family=PUBLICATION_STYLE['font_family'],
+            size=PUBLICATION_STYLE['font_size'],
+            color='black'
+        ),
+        legend=dict(
+            font=dict(
+                family=PUBLICATION_STYLE['font_family'],
+                size=PUBLICATION_STYLE['legend_font_size'],
+                color='black'
+            ),
+            bordercolor='black',
+            borderwidth=1,
+            bgcolor='rgba(255,255,255,0.9)',
+            x=0.02,
+            y=0.98,
+            xanchor='left',
+            yanchor='top'
+        ),
+        showlegend=True
+    )
+    
+    return fig
+
+# ============================================================================
 # EXPORT FUNCTIONS
 # ============================================================================
 
@@ -326,95 +604,184 @@ def get_json_download_link(data, filename="parameters.json"):
     return href
 
 # ============================================================================
-# PLOTTING FUNCTIONS
+# CALCULATION FUNCTIONS
 # ============================================================================
 
-def create_plotly_figure(title, x_title, y_title, width=800, height=600):
-    """Create publication-quality figure with English labels"""
-    fig = go.Figure()
+def perform_calculations(data_input_text, uploaded_file, pH2O_value, Acc_value,
+                        exclude_low_T_method1, exclude_high_T_method1,
+                        exclude_low_T_method2, exclude_high_T_method2):
+    """Perform all calculations and return results"""
     
-    fig.update_layout(
-        title=dict(
-            text=title,
-            font=dict(
-                family=PUBLICATION_STYLE['font_family'],
-                size=PUBLICATION_STYLE['title_font_size'],
-                color='black'
-            ),
-            x=0.5,
-            xanchor='center'
-        ),
-        xaxis=dict(
-            title=dict(
-                text=x_title,
-                font=dict(
-                    family=PUBLICATION_STYLE['font_family'],
-                    size=PUBLICATION_STYLE['axis_title_font_size'],
-                    color='black'
-                )
-            ),
-            showline=True,
-            linewidth=PUBLICATION_STYLE['axis_line_width'],
-            linecolor='black',
-            mirror=True,
-            showgrid=False,
-            zeroline=False,
-            tickfont=dict(
-                family=PUBLICATION_STYLE['font_family'],
-                size=PUBLICATION_STYLE['tick_font_size'],
-                color='black'
-            ),
-            ticks='outside',
-            ticklen=PUBLICATION_STYLE['tick_length'],
-            tickwidth=PUBLICATION_STYLE['tick_width']
-        ),
-        yaxis=dict(
-            title=dict(
-                text=y_title,
-                font=dict(
-                    family=PUBLICATION_STYLE['font_family'],
-                    size=PUBLICATION_STYLE['axis_title_font_size'],
-                    color='black'
-                )
-            ),
-            showline=True,
-            linewidth=PUBLICATION_STYLE['axis_line_width'],
-            linecolor='black',
-            mirror=True,
-            showgrid=False,
-            zeroline=False,
-            tickfont=dict(
-                family=PUBLICATION_STYLE['font_family'],
-                size=PUBLICATION_STYLE['tick_font_size'],
-                color='black'
-            ),
-            ticks='outside',
-            ticklen=PUBLICATION_STYLE['tick_length'],
-            tickwidth=PUBLICATION_STYLE['tick_width']
-        ),
-        plot_bgcolor='white',
-        paper_bgcolor='white',
-        width=width,
-        height=height,
-        margin=dict(l=80, r=40, t=80, b=60),
-        font=dict(
-            family=PUBLICATION_STYLE['font_family'],
-            size=PUBLICATION_STYLE['font_size'],
-            color='black'
-        ),
-        legend=dict(
-            font=dict(
-                family=PUBLICATION_STYLE['font_family'],
-                size=PUBLICATION_STYLE['legend_font_size'],
-                color='black'
-            ),
-            bordercolor='black',
-            borderwidth=1,
-            bgcolor='rgba(255,255,255,0.9)'
-        )
+    # Parse and validate data
+    data_array, load_message = parse_input_data(data_input_text, uploaded_file)
+    is_valid, valid_message = validate_input_data(data_array, Acc_value)
+    
+    if not is_valid:
+        return None, f"Validation error: {valid_message}", None, None
+    
+    # Temperature conversion
+    T_C = data_array[:, 0]
+    T_K = T_C + 273.15
+    OH_exp = data_array[:, 1]
+    
+    n_points = len(data_array)
+    
+    # ========================================================================
+    # METHOD 1: Kw Analysis
+    # ========================================================================
+    
+    # Apply point exclusion - CORRECTED: exclude_low_T excludes from beginning, exclude_high_T excludes from end
+    n_low_m1 = exclude_low_T_method1  # Points to exclude from start (low temperatures)
+    n_high_m1 = exclude_high_T_method1  # Points to exclude from end (high temperatures)
+    
+    T_K_m1 = T_K[n_low_m1:len(T_K)-n_high_m1]
+    OH_exp_m1 = OH_exp[n_low_m1:len(OH_exp)-n_high_m1]
+    T_C_m1 = T_C[n_low_m1:len(T_C)-n_high_m1]
+    
+    # Calculate Kw with validation
+    T_K_valid, OH_valid, Kw_valid = calculate_Kw_with_validation(
+        T_K_m1, OH_exp_m1, pH2O_value, Acc_value
     )
     
-    return fig
+    if len(T_K_valid) < 3:
+        return None, "Insufficient valid points for Kw analysis", None, None
+    
+    # Linear regression
+    ln_Kw = np.log(Kw_valid)
+    x_m1 = 1000 / T_K_valid
+    
+    slope, intercept, r_value, p_value, std_err = stats.linregress(x_m1, ln_Kw)
+    
+    # Calculate parameters with errors
+    dH_method1 = -slope * R * 1000  # J/mol
+    dS_method1 = intercept * R      # J/(mol·K)
+    
+    # Errors
+    dH_err = std_err * R * 1000
+    dS_err = std_err * R
+    
+    # 95% confidence intervals
+    n = len(x_m1)
+    if n > 2:
+        t_val = stats.t.ppf(0.975, n-2)  # t-statistic for 95% CI
+        dH_ci = t_val * dH_err
+        dS_ci = t_val * dS_err
+    else:
+        dH_ci = 0
+        dS_ci = 0
+    
+    # ========================================================================
+    # METHOD 2: Direct Fitting
+    # ========================================================================
+    
+    # Apply point exclusion
+    n_low_m2 = exclude_low_T_method2
+    n_high_m2 = exclude_high_T_method2
+    
+    T_K_m2 = T_K[n_low_m2:len(T_K)-n_high_m2]
+    OH_exp_m2 = OH_exp[n_low_m2:len(OH_exp)-n_high_m2]
+    T_C_m2 = T_C[n_low_m2:len(T_C)-n_high_m2]
+    
+    # Fitting function
+    def model_OH_fit(T_K_fit, dH, dS):
+        return analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, dH, dS)
+    
+    try:
+        # Nonlinear fitting
+        popt, pcov = curve_fit(
+            model_OH_fit, 
+            T_K_m2, 
+            OH_exp_m2,
+            p0=[dH_method1, dS_method1],
+            bounds=([-500000, -500], [0, 500]),
+            maxfev=10000
+        )
+        
+        dH_method2, dS_method2 = popt
+        perr = np.sqrt(np.diag(pcov))
+        
+        # Calculate model values
+        OH_model_m2 = model_OH_fit(T_K_m2, dH_method2, dS_method2)
+        
+        # Statistics
+        residuals = OH_exp_m2 - OH_model_m2
+        SSE = np.sum(residuals**2)
+        SST = np.sum((OH_exp_m2 - np.mean(OH_exp_m2))**2)
+        R2_method2 = 1 - (SSE/SST) if SST > 0 else 0
+        RMSE = np.sqrt(SSE / len(OH_exp_m2))
+        
+        # 95% confidence intervals
+        dH_ci_m2 = 1.96 * perr[0]
+        dS_ci_m2 = 1.96 * perr[1]
+        
+    except Exception as e:
+        # Use Method 1 parameters if fitting fails
+        dH_method2, dS_method2 = dH_method1, dS_method1
+        R2_method2 = 0
+        SSE = np.nan
+        RMSE = np.nan
+        perr = [0, 0]
+        dH_ci_m2 = 0
+        dS_ci_m2 = 0
+        OH_model_m2 = analytical_OH_numerical(T_K_m2, pH2O_value, Acc_value, dH_method2, dS_method2)
+        residuals = OH_exp_m2 - OH_model_m2
+    
+    # Prepare results dictionary
+    results = {
+        'data': {
+            'T_C': T_C,
+            'T_K': T_K,
+            'OH_exp': OH_exp,
+            'n_points': n_points
+        },
+        'method1': {
+            'T_C': T_C_m1,
+            'T_K': T_K_m1,
+            'OH_exp': OH_exp_m1,
+            'T_valid': T_K_valid,
+            'OH_valid': OH_valid,
+            'Kw_valid': Kw_valid,
+            'x_m1': x_m1,
+            'ln_Kw': ln_Kw,
+            'dH': dH_method1,
+            'dH_ci': dH_ci,
+            'dS': dS_method1,
+            'dS_ci': dS_ci,
+            'slope': slope,
+            'intercept': intercept,
+            'r_value': r_value,
+            'r_squared': r_value**2,
+            'std_err': std_err,
+            'p_value': p_value,
+            'n_valid': len(T_K_valid)
+        },
+        'method2': {
+            'T_C': T_C_m2,
+            'T_K': T_K_m2,
+            'OH_exp': OH_exp_m2,
+            'OH_model': OH_model_m2,
+            'residuals': residuals,
+            'dH': dH_method2,
+            'dH_ci': dH_ci_m2,
+            'dS': dS_method2,
+            'dS_ci': dS_ci_m2,
+            'R2': R2_method2,
+            'SSE': SSE,
+            'RMSE': RMSE,
+            'perr': perr,
+            'n_points': len(T_K_m2)
+        },
+        'parameters': {
+            'pH2O': pH2O_value,
+            'Acc': Acc_value,
+            'exclude_low_m1': exclude_low_T_method1,
+            'exclude_high_m1': exclude_high_T_method1,
+            'exclude_low_m2': exclude_low_T_method2,
+            'exclude_high_m2': exclude_high_T_method2
+        }
+    }
+    
+    return results, load_message, valid_message, data_array
 
 # ============================================================================
 # MAIN APPLICATION
@@ -433,14 +800,16 @@ with st.sidebar:
     st.subheader("Data Source")
     data_source = st.radio(
         "Data source:",
-        ["Text input", "Upload file"]
+        ["Text input", "Upload file"],
+        key="data_source"
     )
     
     if data_source == "Upload file":
         uploaded_file = st.file_uploader(
             "Choose file",
             type=["csv", "txt", "xlsx", "xls"],
-            help="Supported: CSV, TXT, Excel. Data should contain temperature and [OH] concentration"
+            help="Supported: CSV, TXT, Excel. Data should contain temperature and [OH] concentration",
+            key="file_uploader"
         )
         data_input_text = st.session_state.default_params['data']
     else:
@@ -449,7 +818,8 @@ with st.sidebar:
             "Enter data (temperature °C and [OH]):",
             value=st.session_state.default_params['data'],
             height=150,
-            help="Format: temperature concentration. Separator: space, tab or ;"
+            help="Format: temperature concentration. Separator: space, tab or ;",
+            key="data_input"
         )
     
     # System parameters
@@ -460,7 +830,8 @@ with st.sidebar:
         max_value=1.0,
         value=st.session_state.default_params['pH2O'],
         step=0.01,
-        format="%.5f"
+        format="%.5f",
+        key="pH2O_input"
     )
     
     Acc_value = st.number_input(
@@ -470,57 +841,72 @@ with st.sidebar:
         value=st.session_state.default_params['Acc'],
         step=0.01,
         format="%.3f",
-        help="Acceptor dopant concentration (0 < x < 6)"
+        help="Acceptor dopant concentration (0 < x < 6)",
+        key="Acc_input"
     )
+    
+    # Parse data to determine number of points
+    data_array, _ = parse_input_data(data_input_text, uploaded_file)
+    n_total_points = len(data_array)
+    
+    # Calculate maximum exclusions (n/2 - 1)
+    max_exclusion = max(0, n_total_points // 2 - 1) if n_total_points > 0 else 0
     
     # Fitting settings
     st.subheader("Fitting Settings")
+    
     with st.expander("Method 1: Kw Analysis", expanded=True):
-        exclude_low_T_method1 = st.slider(
-            'Exclude low T points:',
-            min_value=0,
-            max_value=10,
-            value=0,
-            key="m1_low"
-        )
-        exclude_high_T_method1 = st.slider(
-            'Exclude high T points:',
-            min_value=0,
-            max_value=10,
-            value=0,
-            key="m1_high"
-        )
+        st.markdown("**Points to exclude:**")
+        col_m1_low, col_m1_high = st.columns(2)
+        with col_m1_low:
+            exclude_low_T_method1 = st.slider(
+                'From start (low T):',
+                min_value=0,
+                max_value=max_exclusion,
+                value=0,
+                key="m1_low",
+                help=f"Exclude first N points (0-{max_exclusion})"
+            )
+        with col_m1_high:
+            exclude_high_T_method1 = st.slider(
+                'From end (high T):',
+                min_value=0,
+                max_value=max_exclusion,
+                value=0,
+                key="m1_high",
+                help=f"Exclude last N points (0-{max_exclusion})"
+            )
     
     with st.expander("Method 2: Direct Fitting", expanded=True):
-        exclude_low_T_method2 = st.slider(
-            'Exclude low T points:',
-            min_value=0,
-            max_value=10,
-            value=0,
-            key="m2_low"
-        )
-        exclude_high_T_method2 = st.slider(
-            'Exclude high T points:',
-            min_value=0,
-            max_value=10,
-            value=0,
-            key="m2_high"
-        )
+        st.markdown("**Points to exclude:**")
+        col_m2_low, col_m2_high = st.columns(2)
+        with col_m2_low:
+            exclude_low_T_method2 = st.slider(
+                'From start (low T):',
+                min_value=0,
+                max_value=max_exclusion,
+                value=0,
+                key="m2_low",
+                help=f"Exclude first N points (0-{max_exclusion})"
+            )
+        with col_m2_high:
+            exclude_high_T_method2 = st.slider(
+                'From end (high T):',
+                min_value=0,
+                max_value=max_exclusion,
+                value=0,
+                key="m2_high",
+                help=f"Exclude last N points (0-{max_exclusion})"
+            )
     
     # Additional options
     st.subheader("Additional Options")
-    show_intermediate = st.checkbox("Show intermediate calculations", value=False)
-    calculate_3d = st.checkbox("Calculate 3D surfaces", value=False)
-    use_log_pH2O = st.checkbox("Logarithmic pH₂O scale in 3D", value=False)
+    show_intermediate = st.checkbox("Show intermediate calculations", value=False, key="show_intermediate")
+    calculate_3d = st.checkbox("Calculate 3D surfaces", value=False, key="calculate_3d")
+    use_log_pH2O = st.checkbox("Logarithmic pH₂O scale in 3D", value=False, key="use_log_pH2O")
     
-    # Control buttons
-    col1, col2 = st.columns(2)
-    with col1:
-        reset_btn = st.button("🔄 Reset", use_container_width=True)
-    with col2:
-        calculate_btn = st.button("🚀 Calculate", type="primary", use_container_width=True)
-    
-    if reset_btn:
+    # Reset button
+    if st.button("🔄 Reset to Defaults", use_container_width=True, key="reset_button"):
         st.session_state.default_params = {
             'pH2O': 0.03,
             'Acc': 0.2,
@@ -538,926 +924,510 @@ with st.sidebar:
     
     # Information
     st.markdown("---")
-    st.markdown("**Version:** 2.0 | **Updated:** 2024")
-    st.markdown("""
-    **Equations:**
-    - Kw = 4[OH]² / (pH₂O·([Acc]-[OH])·(6-[Acc]-[OH]))
-    - ln(Kw) = -ΔH°/RT + ΔS°/R
-    """)
+    st.markdown(f"**Total data points:** {n_total_points}")
+    st.markdown(f"**Max exclusions:** {max_exclusion} points")
+    st.markdown("**Version:** 2.1 | **Updated:** 2024")
 
-# Main calculation section
-if calculate_btn:
-    try:
-        with st.spinner('Processing data...'):
-            # Parse and validate data
-            data_array, load_message = parse_input_data(data_input_text, uploaded_file)
-            is_valid, valid_message = validate_input_data(data_array, Acc_value)
-            
-            if not is_valid:
-                st.error(f"Validation error: {valid_message}")
-                st.stop()
-            
-            st.success(f"{load_message}. {valid_message}")
-            
-            # Display data
-            if show_intermediate:
-                with st.expander("📊 Loaded Data", expanded=True):
-                    df_data = pd.DataFrame(data_array, columns=['Temperature (°C)', '[OH]'])
-                    st.dataframe(df_data, use_container_width=True)
-            
-            # Temperature conversion
-            T_C = data_array[:, 0]
-            T_K = T_C + 273.15
-            OH_exp = data_array[:, 1]
-            
-            # ====================================================================
-            # METHOD 1: Kw Analysis
-            # ====================================================================
-            st.markdown("---")
-            st.header("📈 Method 1: Equilibrium Constant Analysis")
-            
-            # Apply point exclusion
-            n_low_m1 = exclude_low_T_method1
-            n_high_m1 = exclude_high_T_method1
-            
-            T_K_m1 = T_K[n_low_m1:len(T_K)-n_high_m1]
-            OH_exp_m1 = OH_exp[n_low_m1:len(OH_exp)-n_high_m1]
-            T_C_m1 = T_C[n_low_m1:len(T_C)-n_high_m1]
-            
-            # Calculate Kw with validation
-            T_K_valid, OH_valid, Kw_valid = calculate_Kw_with_validation(
-                T_K_m1, OH_exp_m1, pH2O_value, Acc_value
-            )
-            
-            if len(T_K_valid) < 3:
-                st.error("Insufficient valid points for Kw analysis. Check data.")
-                st.stop()
-            
-            # Linear regression
-            ln_Kw = np.log(Kw_valid)
-            x_m1 = 1000 / T_K_valid
-            
-            slope, intercept, r_value, p_value, std_err = stats.linregress(x_m1, ln_Kw)
-            
-            # Calculate parameters with errors
-            dH_method1 = -slope * R * 1000  # J/mol
-            dS_method1 = intercept * R      # J/(mol·K)
-            
-            # Errors
-            dH_err = std_err * R * 1000
-            dS_err = std_err * R
-            
-            # 95% confidence intervals
-            n = len(x_m1)
-            if n > 2:
-                t_val = stats.t.ppf(0.975, n-2)  # t-statistic for 95% CI
-                dH_ci = t_val * dH_err
-                dS_ci = t_val * dS_err
+# Main calculation and display
+if n_total_points > 0:
+    # Perform calculations
+    results, load_message, valid_message, data_array = perform_calculations(
+        data_input_text, uploaded_file, pH2O_value, Acc_value,
+        exclude_low_T_method1, exclude_high_T_method1,
+        exclude_low_T_method2, exclude_high_T_method2
+    )
+    
+    if results is None:
+        st.error(load_message)
+    else:
+        # Display status
+        st.success(f"{load_message}. {valid_message}")
+        
+        # Display intermediate data if requested
+        if show_intermediate:
+            with st.expander("📊 Loaded Data", expanded=False):
+                df_data = pd.DataFrame(data_array, columns=['Temperature (°C)', '[OH]'])
+                st.dataframe(df_data, use_container_width=True)
+        
+        # ====================================================================
+        # METHOD 1 RESULTS
+        # ====================================================================
+        st.markdown("---")
+        st.header("📈 Method 1: Equilibrium Constant Analysis")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("ΔH°", f"{results['method1']['dH']/1000:.2f} ± {results['method1']['dH_ci']/1000:.2f} kJ/mol",
+                     delta=f"{results['method1']['dH']:.0f} ± {results['method1']['dH_ci']:.0f} J/mol")
+            st.metric("Points analyzed", results['method1']['n_valid'])
+        
+        with col2:
+            st.metric("ΔS°", f"{results['method1']['dS']:.2f} ± {results['method1']['dS_ci']:.2f} J/(mol·K)")
+            st.metric("R² coefficient", f"{results['method1']['r_squared']:.4f}")
+        
+        with col3:
+            st.metric("Standard error", f"{results['method1']['std_err']:.4f}")
+            st.metric("Significance level", f"p = {results['method1']['p_value']:.2e}")
+        
+        # ====================================================================
+        # METHOD 2 RESULTS
+        # ====================================================================
+        st.markdown("---")
+        st.header("📊 Method 2: Direct Profile Fitting")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            color = "green" if results['method2']['R2'] > 0.95 else "orange" if results['method2']['R2'] > 0.9 else "red"
+            st.markdown(f"<h3 style='color:{color}'>{results['method2']['R2']:.4f}</h3>", unsafe_allow_html=True)
+            st.metric("R² coefficient", f"{results['method2']['R2']:.4f}")
+            st.metric("RMSE", f"{results['method2']['RMSE']:.6f}" if not np.isnan(results['method2']['RMSE']) else "N/A")
+        
+        with col2:
+            st.metric("ΔH°", f"{results['method2']['dH']/1000:.2f} ± {results['method2']['dH_ci']/1000:.2f} kJ/mol",
+                     delta=f"{results['method2']['dH']:.0f} ± {results['method2']['perr'][0]:.0f} J/mol" if 'perr' in results['method2'] else f"{results['method2']['dH']:.0f} J/mol")
+            st.metric("Points analyzed", results['method2']['n_points'])
+        
+        with col3:
+            st.metric("ΔS°", f"{results['method2']['dS']:.2f} ± {results['method2']['dS_ci']:.2f} J/(mol·K)",
+                     delta=f"± {results['method2']['perr'][1]:.2f}" if 'perr' in results['method2'] else "")
+            st.metric("SSE", f"{results['method2']['SSE']:.6f}" if not np.isnan(results['method2']['SSE']) else "N/A")
+        
+        # ====================================================================
+        # SUMMARY TABLE
+        # ====================================================================
+        st.markdown("---")
+        st.header("📋 Summary of Results")
+        
+        summary_data = {
+            'Parameter': [
+                'ΔH° (kJ/mol)', 
+                'ΔH 95% CI (kJ/mol)',
+                'ΔS° (J/(mol·K))',
+                'ΔS 95% CI (J/(mol·K))',
+                'R²',
+                'Points analyzed',
+                'Fitting error'
+            ],
+            'Method 1': [
+                f"{results['method1']['dH']/1000:.2f}",
+                f"±{results['method1']['dH_ci']/1000:.2f}",
+                f"{results['method1']['dS']:.2f}",
+                f"±{results['method1']['dS_ci']:.2f}",
+                f"{results['method1']['r_squared']:.4f}",
+                f"{results['method1']['n_valid']}",
+                f"std_err={results['method1']['std_err']:.4f}"
+            ],
+            'Method 2': [
+                f"{results['method2']['dH']/1000:.2f}",
+                f"±{results['method2']['dH_ci']/1000:.2f}",
+                f"{results['method2']['dS']:.2f}",
+                f"±{results['method2']['dS_ci']:.2f}",
+                f"{results['method2']['R2']:.4f}",
+                f"{results['method2']['n_points']}",
+                f"RMSE={results['method2']['RMSE']:.6f}" if not np.isnan(results['method2']['RMSE']) else "N/A"
+            ]
+        }
+        
+        summary_df = pd.DataFrame(summary_data)
+        
+        # Style table
+        def color_r2(val):
+            if isinstance(val, str) and '=' in val:
+                num = float(val.split('=')[1])
+            elif isinstance(val, str) and val.replace('.', '').isdigit():
+                num = float(val)
             else:
-                dH_ci = 0
-                dS_ci = 0
+                return ''
             
-            # Display results
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                st.metric("ΔH°", f"{dH_method1/1000:.2f} ± {dH_ci/1000:.2f} kJ/mol",
-                         delta=f"{dH_method1:.0f} ± {dH_ci:.0f} J/mol")
-                st.metric("Points analyzed", len(T_K_valid))
-            
-            with col2:
-                st.metric("ΔS°", f"{dS_method1:.2f} ± {dS_ci:.2f} J/(mol·K)")
-                st.metric("R² coefficient", f"{r_value**2:.4f}")
-            
-            with col3:
-                st.metric("Standard error", f"{std_err:.4f}")
-                st.metric("Significance level", f"p = {p_value:.2e}")
-            
-            if show_intermediate:
-                with st.expander("🔍 Intermediate Calculations (Method 1)"):
-                    T_C_valid = T_K_valid - 273.15
-                    df_kw = pd.DataFrame({
-                        'T (°C)': T_C_valid,
-                        'T (K)': T_K_valid,
-                        '[OH]': OH_valid,
-                        'Kw': Kw_valid,
-                        'ln(Kw)': ln_Kw,
-                        '1000/T': x_m1
-                    })
-                    st.dataframe(df_kw, use_container_width=True)
-            
-            # ====================================================================
-            # METHOD 2: Direct Fitting
-            # ====================================================================
-            st.markdown("---")
-            st.header("📊 Method 2: Direct Profile Fitting")
-            
-            # Apply point exclusion
-            n_low_m2 = exclude_low_T_method2
-            n_high_m2 = exclude_high_T_method2
-            
-            T_K_m2 = T_K[n_low_m2:len(T_K)-n_high_m2]
-            OH_exp_m2 = OH_exp[n_low_m2:len(OH_exp)-n_high_m2]
-            T_C_m2 = T_C[n_low_m2:len(T_C)-n_high_m2]
-            
-            # Fitting function
-            def model_OH_fit(T_K_fit, dH, dS):
-                return analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, dH, dS)
-            
-            try:
-                # Nonlinear fitting
-                popt, pcov = curve_fit(
-                    model_OH_fit, 
-                    T_K_m2, 
-                    OH_exp_m2,
-                    p0=[dH_method1, dS_method1],
-                    bounds=([-500000, -500], [0, 500]),
-                    maxfev=10000
-                )
-                
-                dH_method2, dS_method2 = popt
-                perr = np.sqrt(np.diag(pcov))
-                
-                # Calculate model values
-                OH_model_m2 = model_OH_fit(T_K_m2, dH_method2, dS_method2)
-                
-                # Statistics
-                residuals = OH_exp_m2 - OH_model_m2
-                SSE = np.sum(residuals**2)
-                SST = np.sum((OH_exp_m2 - np.mean(OH_exp_m2))**2)
-                R2_method2 = 1 - (SSE/SST) if SST > 0 else 0
-                RMSE = np.sqrt(SSE / len(OH_exp_m2))
-                
-                # 95% confidence intervals
-                dH_ci_m2 = 1.96 * perr[0]
-                dS_ci_m2 = 1.96 * perr[1]
-                
-                # Display results
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    color = "green" if R2_method2 > 0.95 else "orange" if R2_method2 > 0.9 else "red"
-                    st.markdown(f"<h3 style='color:{color}'>{R2_method2:.4f}</h3>", unsafe_allow_html=True)
-                    st.metric("R² coefficient", f"{R2_method2:.4f}")
-                    st.metric("RMSE", f"{RMSE:.6f}")
-                
-                with col2:
-                    st.metric("ΔH°", f"{dH_method2/1000:.2f} ± {dH_ci_m2/1000:.2f} kJ/mol",
-                             delta=f"{dH_method2:.0f} ± {perr[0]:.0f} J/mol")
-                    st.metric("Points analyzed", len(T_K_m2))
-                
-                with col3:
-                    st.metric("ΔS°", f"{dS_method2:.2f} ± {dS_ci_m2:.2f} J/(mol·K)",
-                             delta=f"± {perr[1]:.2f}")
-                    st.metric("SSE", f"{SSE:.6f}")
-                
-                if show_intermediate:
-                    with st.expander("🔍 Intermediate Calculations (Method 2)"):
-                        df_fit = pd.DataFrame({
-                            'T (°C)': T_C_m2,
-                            'T (K)': T_K_m2,
-                            '[OH] exp': OH_exp_m2,
-                            '[OH] model': OH_model_m2,
-                            'Difference': residuals,
-                            'Rel. error (%)': 100 * np.abs(residuals / OH_exp_m2)
-                        })
-                        st.dataframe(df_fit, use_container_width=True)
-                
-            except Exception as e:
-                st.error(f"Fitting error: {e}")
-                st.info("Using parameters from Method 1")
-                dH_method2, dS_method2 = dH_method1, dS_method1
-                R2_method2 = 0
-                SSE = np.nan
-                RMSE = np.nan
-                perr = [0, 0]
-                OH_model_m2 = analytical_OH_numerical(T_K_m2, pH2O_value, Acc_value, dH_method2, dS_method2)
-                residuals = OH_exp_m2 - OH_model_m2
-            
-            # ====================================================================
-            # SUMMARY TABLE
-            # ====================================================================
-            st.markdown("---")
-            st.header("📋 Summary of Results")
-            
-            summary_data = {
-                'Parameter': [
-                    'ΔH° (kJ/mol)', 
-                    'ΔH 95% CI (kJ/mol)',
-                    'ΔS° (J/(mol·K))',
-                    'ΔS 95% CI (J/(mol·K))',
-                    'R²',
-                    'Points analyzed',
-                    'Fitting error'
-                ],
-                'Method 1': [
-                    f"{dH_method1/1000:.2f}",
-                    f"±{dH_ci/1000:.2f}",
-                    f"{dS_method1:.2f}",
-                    f"±{dS_ci:.2f}",
-                    f"{r_value**2:.4f}",
-                    f"{len(T_K_valid)}",
-                    f"std_err={std_err:.4f}"
-                ],
-                'Method 2': [
-                    f"{dH_method2/1000:.2f}",
-                    f"±{dH_ci_m2/1000:.2f}",
-                    f"{dS_method2:.2f}",
-                    f"±{dS_ci_m2:.2f}",
-                    f"{R2_method2:.4f}",
-                    f"{len(T_K_m2)}",
-                    f"RMSE={RMSE:.6f}" if not np.isnan(RMSE) else "N/A"
-                ]
-            }
-            
-            summary_df = pd.DataFrame(summary_data)
-            
-            # Style table
-            def color_r2(val):
-                if isinstance(val, str) and '=' in val:
-                    num = float(val.split('=')[1])
-                elif isinstance(val, str) and val.replace('.', '').isdigit():
-                    num = float(val)
-                else:
-                    return ''
-                
-                if num > 0.95:
-                    return 'background-color: #d4edda'
-                elif num > 0.9:
-                    return 'background-color: #fff3cd'
-                else:
-                    return 'background-color: #f8d7da'
-            
-            st.dataframe(
-                summary_df.style.applymap(color_r2, subset=['Method 1', 'Method 2']),
-                use_container_width=True
-            )
-            
-            # Export
-            st.markdown("### 📤 Export Results")
-            col_exp1, col_exp2 = st.columns(2)
-            
-            with col_exp1:
-                st.markdown(get_table_download_link(summary_df, "thermo_results.csv"), unsafe_allow_html=True)
-            
-            with col_exp2:
-                export_data = {
-                    'parameters': {
-                        'pH2O': pH2O_value,
-                        'Acc': Acc_value,
-                        'temperature_unit': 'Celsius'
-                    },
-                    'method1': {
-                        'dH_kJ_mol': float(dH_method1/1000),
-                        'dH_CI_kJ_mol': float(dH_ci/1000),
-                        'dS_J_molK': float(dS_method1),
-                        'dS_CI_J_molK': float(dS_ci),
-                        'R2': float(r_value**2),
-                        'n_points': int(len(T_K_valid)),
-                        'excluded_low': exclude_low_T_method1,
-                        'excluded_high': exclude_high_T_method1
-                    },
-                    'method2': {
-                        'dH_kJ_mol': float(dH_method2/1000),
-                        'dH_CI_kJ_mol': float(dH_ci_m2/1000),
-                        'dS_J_molK': float(dS_method2),
-                        'dS_CI_J_molK': float(dS_ci_m2),
-                        'R2': float(R2_method2),
-                        'RMSE': float(RMSE) if not np.isnan(RMSE) else None,
-                        'n_points': int(len(T_K_m2)),
-                        'excluded_low': exclude_low_T_method2,
-                        'excluded_high': exclude_high_T_method2
-                    }
+            if num > 0.95:
+                return 'background-color: #d4edda'
+            elif num > 0.9:
+                return 'background-color: #fff3cd'
+            else:
+                return 'background-color: #f8d7da'
+        
+        st.dataframe(
+            summary_df.style.applymap(color_r2, subset=['Method 1', 'Method 2']),
+            use_container_width=True
+        )
+        
+        # Export
+        st.markdown("### 📤 Export Results")
+        col_exp1, col_exp2 = st.columns(2)
+        
+        with col_exp1:
+            st.markdown(get_table_download_link(summary_df, "thermo_results.csv"), unsafe_allow_html=True)
+        
+        with col_exp2:
+            export_data = {
+                'parameters': {
+                    'pH2O': results['parameters']['pH2O'],
+                    'Acc': results['parameters']['Acc'],
+                    'temperature_unit': 'Celsius'
+                },
+                'method1': {
+                    'dH_kJ_mol': float(results['method1']['dH']/1000),
+                    'dH_CI_kJ_mol': float(results['method1']['dH_ci']/1000),
+                    'dS_J_molK': float(results['method1']['dS']),
+                    'dS_CI_J_molK': float(results['method1']['dS_ci']),
+                    'R2': float(results['method1']['r_squared']),
+                    'n_points': int(results['method1']['n_valid']),
+                    'excluded_low': results['parameters']['exclude_low_m1'],
+                    'excluded_high': results['parameters']['exclude_high_m1']
+                },
+                'method2': {
+                    'dH_kJ_mol': float(results['method2']['dH']/1000),
+                    'dH_CI_kJ_mol': float(results['method2']['dH_ci']/1000),
+                    'dS_J_molK': float(results['method2']['dS']),
+                    'dS_CI_J_molK': float(results['method2']['dS_ci']),
+                    'R2': float(results['method2']['R2']),
+                    'RMSE': float(results['method2']['RMSE']) if not np.isnan(results['method2']['RMSE']) else None,
+                    'n_points': int(results['method2']['n_points']),
+                    'excluded_low': results['parameters']['exclude_low_m2'],
+                    'excluded_high': results['parameters']['exclude_high_m2']
                 }
-                st.markdown(get_json_download_link(export_data, "parameters.json"), unsafe_allow_html=True)
-            
-            # ====================================================================
-            # VISUALIZATION - ONE PLOT PER ROW
-            # ====================================================================
-            
-            # 1. Experimental Data
-            st.markdown("---")
-            st.header("📊 Visualization")
-            
-            fig1 = create_plotly_figure(
-                "Experimental Data",
-                "Temperature (°C)",
-                "[OH]"
-            )
-            
-            fig1.add_trace(go.Scatter(
-                x=T_C,
-                y=OH_exp,
-                mode='markers',
-                marker=dict(
-                    size=PUBLICATION_STYLE['marker_size'],
-                    color='black',
-                    symbol='circle',
-                    line=dict(width=1, color='black')
-                ),
-                name='Experimental data',
-                showlegend=True
-            ))
-            
-            # Add physical boundaries
-            fig1.add_hline(
-                y=Acc_value, 
-                line=dict(color='red', width=1, dash='dash'),
-                annotation_text=f'[Acc] = {Acc_value:.3f}',
-                annotation_position="top right"
-            )
-            
-            fig1.add_hline(
-                y=0, 
-                line=dict(color='blue', width=1, dash='dash'),
-                annotation_text='[OH] = 0',
-                annotation_position="bottom right"
-            )
-            
-            st.plotly_chart(fig1, use_container_width=True)
-            
-            # 2. Method 1: ln(Kw) vs 1000/T
-            fig2 = create_plotly_figure(
-                "Method 1: ln(Kw) vs 1000/T",
-                "1000/T (K⁻¹)",
-                "ln(Kw)"
-            )
-            
-            fig2.add_trace(go.Scatter(
-                x=x_m1,
-                y=ln_Kw,
-                mode='markers',
-                marker=dict(
-                    size=PUBLICATION_STYLE['marker_size'],
-                    color='blue',
-                    symbol='circle',
-                    line=dict(width=1, color='black')
-                ),
-                name='Data points',
-                showlegend=True
-            ))
-            
-            # Regression line
-            x_fit = np.linspace(min(x_m1), max(x_m1), 100)
-            y_fit = slope * x_fit + intercept
-            fig2.add_trace(go.Scatter(
-                x=x_fit,
-                y=y_fit,
-                mode='lines',
-                line=dict(
-                    color='red', 
-                    width=PUBLICATION_STYLE['line_width']
-                ),
-                name=f'Linear fit: R² = {r_value**2:.4f}<br>ΔH = {dH_method1/1000:.1f} kJ/mol',
-                showlegend=True
-            ))
-            
-            st.plotly_chart(fig2, use_container_width=True)
-            
-            # 3. Method 2: Fitting
-            fig3 = create_plotly_figure(
-                "Method 2: Profile Fitting",
-                "Temperature (°C)",
-                "[OH]"
-            )
-            
-            fig3.add_trace(go.Scatter(
-                x=T_C_m2,
-                y=OH_exp_m2,
-                mode='markers',
-                marker=dict(
-                    size=PUBLICATION_STYLE['marker_size'],
-                    color='green',
-                    symbol='circle',
-                    line=dict(width=1, color='black')
-                ),
-                name='Experimental data (fitting)',
-                showlegend=True
-            ))
-            
-            # Model curve
-            T_fit = np.linspace(min(T_C), max(T_C), 200)
-            T_K_fit = T_fit + 273.15
-            OH_fit = analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, dH_method2, dS_method2)
-            
-            fig3.add_trace(go.Scatter(
-                x=T_fit,
-                y=OH_fit,
-                mode='lines',
-                line=dict(
-                    color='orange', 
-                    width=PUBLICATION_STYLE['line_width']
-                ),
-                name=f'Model fit: R² = {R2_method2:.4f}<br>ΔH = {dH_method2/1000:.1f} kJ/mol',
-                showlegend=True
-            ))
-            
-            st.plotly_chart(fig3, use_container_width=True)
-            
-            # 4. Residuals with proper colorbar
-            if 'residuals' in locals() and len(residuals) > 0:
-                fig4 = create_plotly_figure(
-                    "Method 2: Residuals",
-                    "Temperature (°C)",
-                    "[OH]<sub>exp</sub> - [OH]<sub>model</sub>"
-                )
-                
-                # Calculate colors based on residual magnitude
-                abs_residuals = np.abs(residuals)
-                colors = abs_residuals
-                
-                fig4.add_trace(go.Scatter(
-                    x=T_C_m2,
-                    y=residuals,
-                    mode='markers',
-                    marker=dict(
-                        size=PUBLICATION_STYLE['marker_size'],
-                        color=colors,
-                        colorscale='RdBu',
-                        colorbar=dict(
-                            title=dict(
-                                text="|Residual|",
-                                font=dict(
-                                    family=PUBLICATION_STYLE['font_family'],
-                                    size=14,
-                                    color='black'
-                                )
-                            ),
-                            thickness=15,
-                            len=0.5,
-                            x=1.02,
-                            xanchor='left',
-                            y=0.5,
-                            yanchor='middle'
-                        ),
-                        showscale=True,
-                        line=dict(width=0.5, color='black')
-                    ),
-                    name='Residuals',
-                    showlegend=False
-                ))
-                
-                # Zero line
-                fig4.add_hline(
-                    y=0, 
-                    line=dict(
-                        color='black', 
-                        width=1,
-                        dash='dash'
-                    )
-                )
-                
-                # Update layout to accommodate colorbar
-                fig4.update_layout(
-                    margin=dict(l=80, r=100, t=80, b=60)
-                )
-                
-                st.plotly_chart(fig4, use_container_width=True)
-            
-            # 5. Method Comparison
-            fig5 = create_plotly_figure(
-                "Comparison of Methods",
-                "Temperature (°C)",
-                "[OH]"
-            )
-            
-            # Method 1 curve
-            OH_fit_m1 = analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, dH_method1, dS_method1)
-            
+            }
+            st.markdown(get_json_download_link(export_data, "parameters.json"), unsafe_allow_html=True)
+        
+        # ====================================================================
+        # VISUALIZATION
+        # ====================================================================
+        st.markdown("---")
+        st.header("📊 Visualization")
+        
+        # 1. Experimental Data
+        fig1 = create_publication_figure(
+            "Experimental Data",
+            "Temperature (°C)",
+            "[OH]"
+        )
+        
+        fig1.add_trace(go.Scatter(
+            x=results['data']['T_C'],
+            y=results['data']['OH_exp'],
+            mode='markers',
+            marker=dict(
+                size=PUBLICATION_STYLE['marker_size'],
+                color='black',
+                symbol='circle',
+                line=dict(width=1, color='black')
+            ),
+            name='Experimental data',
+            showlegend=True
+        ))
+        
+        # Add physical boundaries
+        fig1.add_hline(
+            y=Acc_value, 
+            line=dict(color='red', width=1, dash='dash'),
+            annotation_text=f'[Acc] = {Acc_value:.3f}',
+            annotation_position="top right",
+            annotation_font=dict(size=12, color='red')
+        )
+        
+        fig1.add_hline(
+            y=0, 
+            line=dict(color='blue', width=1, dash='dash'),
+            annotation_text='[OH] = 0',
+            annotation_position="bottom right",
+            annotation_font=dict(size=12, color='blue')
+        )
+        
+        st.plotly_chart(fig1, use_container_width=True)
+        
+        # 2. Method 1: ln(Kw) vs 1000/T
+        fig2 = create_publication_figure(
+            "Method 1: ln(Kw) vs 1000/T",
+            "1000/T (K⁻¹)",
+            "ln(Kw)"
+        )
+        
+        fig2.add_trace(go.Scatter(
+            x=results['method1']['x_m1'],
+            y=results['method1']['ln_Kw'],
+            mode='markers',
+            marker=dict(
+                size=PUBLICATION_STYLE['marker_size'],
+                color='blue',
+                symbol='circle',
+                line=dict(width=1, color='black')
+            ),
+            name='Data points',
+            showlegend=True
+        ))
+        
+        # Regression line
+        x_min = min(results['method1']['x_m1'])
+        x_max = max(results['method1']['x_m1'])
+        x_fit = np.linspace(x_min, x_max, 100)
+        y_fit = results['method1']['slope'] * x_fit + results['method1']['intercept']
+        
+        fig2.add_trace(go.Scatter(
+            x=x_fit,
+            y=y_fit,
+            mode='lines',
+            line=dict(
+                color='red', 
+                width=PUBLICATION_STYLE['line_width']
+            ),
+            name=f'Linear fit: R² = {results["method1"]["r_squared"]:.4f}<br>ΔH = {results["method1"]["dH"]/1000:.1f} kJ/mol',
+            showlegend=True
+        ))
+        
+        st.plotly_chart(fig2, use_container_width=True)
+        
+        # 3. Method 2: Combined Fitting and Residuals (Rietveld-style)
+        fig3 = create_combined_fitting_figure(
+            "Method 2: Profile Fitting with Residuals",
+            "Temperature (°C)",
+            "[OH]",
+            "[OH]<sub>exp</sub> - [OH]<sub>model</sub>"
+        )
+        
+        # Top plot: Experimental and model
+        fig3.add_trace(go.Scatter(
+            x=results['method2']['T_C'],
+            y=results['method2']['OH_exp'],
+            mode='markers',
+            marker=dict(
+                size=PUBLICATION_STYLE['marker_size'],
+                color='green',
+                symbol='circle',
+                line=dict(width=1, color='black')
+            ),
+            name='Experimental data',
+            showlegend=True
+        ), row=1, col=1)
+        
+        # Model curve
+        T_fit = np.linspace(min(results['data']['T_C']), max(results['data']['T_C']), 200)
+        T_K_fit = T_fit + 273.15
+        OH_fit = analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, 
+                                        results['method2']['dH'], results['method2']['dS'])
+        
+        fig3.add_trace(go.Scatter(
+            x=T_fit,
+            y=OH_fit,
+            mode='lines',
+            line=dict(
+                color='orange', 
+                width=PUBLICATION_STYLE['line_width']
+            ),
+            name=f'Model fit: R² = {results["method2"]["R2"]:.4f}<br>ΔH = {results["method2"]["dH"]/1000:.1f} kJ/mol',
+            showlegend=True
+        ), row=1, col=1)
+        
+        # Bottom plot: Residuals
+        fig3.add_trace(go.Scatter(
+            x=results['method2']['T_C'],
+            y=results['method2']['residuals'],
+            mode='markers',
+            marker=dict(
+                size=PUBLICATION_STYLE['marker_size'] - 2,
+                color='red',
+                symbol='circle',
+                line=dict(width=0.5, color='black')
+            ),
+            name='Residuals',
+            showlegend=False
+        ), row=2, col=1)
+        
+        # Add zero line to residuals
+        fig3.add_hline(
+            y=0, 
+            line=dict(color='black', width=1),
+            row=2, col=1
+        )
+        
+        st.plotly_chart(fig3, use_container_width=True)
+        
+        # 4. Method Comparison
+        fig4 = create_publication_figure(
+            "Comparison of Methods",
+            "Temperature (°C)",
+            "[OH]"
+        )
+        
+        # Method 1 curve
+        OH_fit_m1 = analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, 
+                                          results['method1']['dH'], results['method1']['dS'])
+        
+        fig4.add_trace(go.Scatter(
+            x=T_fit,
+            y=OH_fit_m1,
+            mode='lines',
+            line=dict(
+                color='blue', 
+                width=PUBLICATION_STYLE['line_width'],
+                dash='dash'
+            ),
+            name=f'Method 1: ΔH = {results["method1"]["dH"]/1000:.1f} kJ/mol',
+            showlegend=True
+        ))
+        
+        # Method 2 curve
+        fig4.add_trace(go.Scatter(
+            x=T_fit,
+            y=OH_fit,
+            mode='lines',
+            line=dict(
+                color='red', 
+                width=PUBLICATION_STYLE['line_width']
+            ),
+            name=f'Method 2: ΔH = {results["method2"]["dH"]/1000:.1f} kJ/mol',
+            showlegend=True
+        ))
+        
+        # Experimental points
+        fig4.add_trace(go.Scatter(
+            x=results['data']['T_C'],
+            y=results['data']['OH_exp'],
+            mode='markers',
+            marker=dict(
+                size=PUBLICATION_STYLE['marker_size']-2,
+                color='black',
+                symbol='circle',
+                opacity=0.7,
+                line=dict(width=0.5, color='black')
+            ),
+            name='Experimental data',
+            showlegend=True
+        ))
+        
+        st.plotly_chart(fig4, use_container_width=True)
+        
+        # 5. Temperature Dependence of Kw
+        fig5 = create_publication_figure(
+            "Temperature Dependence of Kw",
+            "Temperature (°C)",
+            "ln(Kw)"
+        )
+        
+        # Calculate Kw for both methods
+        Kw_m1 = np.exp(-results['method1']['dH']/(R * T_K_fit) + results['method1']['dS']/R)
+        Kw_m2 = np.exp(-results['method2']['dH']/(R * T_K_fit) + results['method2']['dS']/R)
+        
+        fig5.add_trace(go.Scatter(
+            x=T_fit,
+            y=np.log(Kw_m1),
+            mode='lines',
+            line=dict(
+                color='blue', 
+                width=PUBLICATION_STYLE['line_width'],
+                dash='dash'
+            ),
+            name='Method 1',
+            showlegend=True
+        ))
+        
+        fig5.add_trace(go.Scatter(
+            x=T_fit,
+            y=np.log(Kw_m2),
+            mode='lines',
+            line=dict(
+                color='red', 
+                width=PUBLICATION_STYLE['line_width']
+            ),
+            name='Method 2',
+            showlegend=True
+        ))
+        
+        # Experimental Kw points
+        if len(results['method1']['T_valid']) > 0:
             fig5.add_trace(go.Scatter(
-                x=T_fit,
-                y=OH_fit_m1,
-                mode='lines',
-                line=dict(
-                    color='blue', 
-                    width=PUBLICATION_STYLE['line_width'],
-                    dash='dash'
-                ),
-                name=f'Method 1: ΔH = {dH_method1/1000:.1f} kJ/mol',
-                showlegend=True
-            ))
-            
-            # Method 2 curve
-            fig5.add_trace(go.Scatter(
-                x=T_fit,
-                y=OH_fit,
-                mode='lines',
-                line=dict(
-                    color='red', 
-                    width=PUBLICATION_STYLE['line_width']
-                ),
-                name=f'Method 2: ΔH = {dH_method2/1000:.1f} kJ/mol',
-                showlegend=True
-            ))
-            
-            # Experimental points
-            fig5.add_trace(go.Scatter(
-                x=T_C,
-                y=OH_exp,
+                x=results['method1']['T_valid'] - 273.15,
+                y=np.log(results['method1']['Kw_valid']),
                 mode='markers',
                 marker=dict(
                     size=PUBLICATION_STYLE['marker_size']-2,
                     color='black',
                     symbol='circle',
-                    opacity=0.7,
                     line=dict(width=0.5, color='black')
                 ),
-                name='Experimental data',
+                name='Experimental (Method 1)',
                 showlegend=True
             ))
-            
-            st.plotly_chart(fig5, use_container_width=True)
-            
-            # 6. Temperature Dependence of Kw
-            fig6 = create_plotly_figure(
-                "Temperature Dependence of Kw",
-                "Temperature (°C)",
-                "ln(Kw)"
-            )
-            
-            # Calculate Kw for both methods
-            Kw_m1 = np.exp(-dH_method1/(R * T_K_fit) + dS_method1/R)
-            Kw_m2 = np.exp(-dH_method2/(R * T_K_fit) + dS_method2/R)
-            
-            fig6.add_trace(go.Scatter(
-                x=T_fit,
-                y=np.log(Kw_m1),
-                mode='lines',
-                line=dict(
-                    color='blue', 
-                    width=PUBLICATION_STYLE['line_width'],
-                    dash='dash'
-                ),
-                name='Method 1',
-                showlegend=True
-            ))
-            
-            fig6.add_trace(go.Scatter(
-                x=T_fit,
-                y=np.log(Kw_m2),
-                mode='lines',
-                line=dict(
-                    color='red', 
-                    width=PUBLICATION_STYLE['line_width']
-                ),
-                name='Method 2',
-                showlegend=True
-            ))
-            
-            # Experimental Kw points
-            if len(T_K_valid) > 0:
-                fig6.add_trace(go.Scatter(
-                    x=T_K_valid - 273.15,
-                    y=np.log(Kw_valid),
-                    mode='markers',
-                    marker=dict(
-                        size=PUBLICATION_STYLE['marker_size']-2,
-                        color='black',
-                        symbol='circle',
-                        line=dict(width=0.5, color='black')
-                    ),
-                    name='Experimental (Method 1)',
-                    showlegend=True
-                ))
-            
-            st.plotly_chart(fig6, use_container_width=True)
-            
-            # ====================================================================
-            # 3D SURFACES (OPTIONAL)
-            # ====================================================================
-            if calculate_3d:
-                st.markdown("---")
-                st.header("🌐 3D Surfaces of Proton Concentration")
-                
-                with st.spinner('Calculating 3D surfaces...'):
-                    progress_bar = st.progress(0)
-                    
-                    @st.cache_data(ttl=300)
-                    def calculate_3d_surface_cached(method, dH, dS, Acc, pH2O_val, use_log, resolution=25):
-                        """Cached function for 3D surface calculation"""
-                        T_C_range = np.linspace(20, 1000, resolution)
-                        pH2O_range = np.logspace(-5, 0, resolution) if use_log else np.linspace(0.00001, 1, resolution)
-                        
-                        T_grid, pH2O_grid = np.meshgrid(T_C_range, pH2O_range)
-                        OH_grid = np.zeros_like(T_grid)
-                        
-                        for i in range(resolution):
-                            for j in range(resolution):
-                                if method == 'method1':
-                                    Kw = np.exp(-dH/(R * (T_grid[i,j] + 273.15)) + dS/R)
-                                    OH_grid[i,j] = calculate_equilibrium_oh(Kw, Acc, pH2O_grid[i,j])
-                                else:
-                                    OH_grid[i,j] = analytical_OH_numerical(
-                                        T_grid[i,j] + 273.15, 
-                                        pH2O_grid[i,j], 
-                                        Acc, 
-                                        dH, 
-                                        dS
-                                    )
-                        
-                        return T_C_range, pH2O_range, OH_grid
-                    
-                    # Calculate surfaces
-                    progress_bar.progress(25)
-                    T_range_m1, pH2O_range_m1, OH_grid_m1 = calculate_3d_surface_cached(
-                        'method1', dH_method1, dS_method1, Acc_value, 
-                        pH2O_value, use_log_pH2O, resolution=25
-                    )
-                    
-                    progress_bar.progress(50)
-                    T_range_m2, pH2O_range_m2, OH_grid_m2 = calculate_3d_surface_cached(
-                        'method2', dH_method2, dS_method2, Acc_value,
-                        pH2O_value, use_log_pH2O, resolution=25
-                    )
-                    
-                    progress_bar.progress(75)
-                    
-                    # Create 3D plots
-                    col_3d1, col_3d2 = st.columns(2)
-                    
-                    with col_3d1:
-                        T_grid1, pH2O_grid1 = np.meshgrid(T_range_m1, pH2O_range_m1)
-                        
-                        fig_3d1 = go.Figure(data=[
-                            go.Surface(
-                                x=T_grid1,
-                                y=np.log10(pH2O_grid1) if use_log_pH2O else pH2O_grid1,
-                                z=OH_grid_m1,
-                                colorscale='Viridis',
-                                contours=dict(
-                                    z=dict(show=True, color='black', width=1)
-                                )
-                            )
-                        ])
-                        
-                        # Add experimental points
-                        fig_3d1.add_trace(go.Scatter3d(
-                            x=T_C,
-                            y=np.log10(np.full_like(T_C, pH2O_value)) if use_log_pH2O else np.full_like(T_C, pH2O_value),
-                            z=OH_exp,
-                            mode='markers',
-                            marker=dict(
-                                size=4,
-                                color='red',
-                                symbol='circle'
-                            ),
-                            name='Experimental'
-                        ))
-                        
-                        fig_3d1.update_layout(
-                            title=dict(
-                                text='Method 1',
-                                font=dict(
-                                    family=PUBLICATION_STYLE['font_family'],
-                                    size=16,
-                                    color='black'
-                                )
-                            ),
-                            scene=dict(
-                                xaxis=dict(
-                                    title='Temperature (°C)',
-                                    backgroundcolor='white',
-                                    gridcolor='lightgray',
-                                    showbackground=True,
-                                    linecolor='black',
-                                    linewidth=2
-                                ),
-                                yaxis=dict(
-                                    title='log₁₀(pH₂O)' if use_log_pH2O else 'pH₂O (atm)',
-                                    backgroundcolor='white',
-                                    gridcolor='lightgray',
-                                    showbackground=True,
-                                    linecolor='black',
-                                    linewidth=2
-                                ),
-                                zaxis=dict(
-                                    title='[OH]',
-                                    backgroundcolor='white',
-                                    gridcolor='lightgray',
-                                    showbackground=True,
-                                    linecolor='black',
-                                    linewidth=2
-                                )
-                            ),
-                            height=500,
-                            plot_bgcolor='white',
-                            paper_bgcolor='white',
-                            font=dict(
-                                family=PUBLICATION_STYLE['font_family'],
-                                size=12,
-                                color='black'
-                            )
-                        )
-                        
-                        st.plotly_chart(fig_3d1, use_container_width=True)
-                    
-                    with col_3d2:
-                        T_grid2, pH2O_grid2 = np.meshgrid(T_range_m2, pH2O_range_m2)
-                        
-                        fig_3d2 = go.Figure(data=[
-                            go.Surface(
-                                x=T_grid2,
-                                y=np.log10(pH2O_grid2) if use_log_pH2O else pH2O_grid2,
-                                z=OH_grid_m2,
-                                colorscale='Plasma',
-                                contours=dict(
-                                    z=dict(show=True, color='black', width=1)
-                                )
-                            )
-                        ])
-                        
-                        fig_3d2.add_trace(go.Scatter3d(
-                            x=T_C,
-                            y=np.log10(np.full_like(T_C, pH2O_value)) if use_log_pH2O else np.full_like(T_C, pH2O_value),
-                            z=OH_exp,
-                            mode='markers',
-                            marker=dict(
-                                size=4,
-                                color='red',
-                                symbol='circle'
-                            ),
-                            name='Experimental'
-                        ))
-                        
-                        fig_3d2.update_layout(
-                            title=dict(
-                                text='Method 2',
-                                font=dict(
-                                    family=PUBLICATION_STYLE['font_family'],
-                                    size=16,
-                                    color='black'
-                                )
-                            ),
-                            scene=dict(
-                                xaxis=dict(
-                                    title='Temperature (°C)',
-                                    backgroundcolor='white',
-                                    gridcolor='lightgray',
-                                    showbackground=True,
-                                    linecolor='black',
-                                    linewidth=2
-                                ),
-                                yaxis=dict(
-                                    title='log₁₀(pH₂O)' if use_log_pH2O else 'pH₂O (atm)',
-                                    backgroundcolor='white',
-                                    gridcolor='lightgray',
-                                    showbackground=True,
-                                    linecolor='black',
-                                    linewidth=2
-                                ),
-                                zaxis=dict(
-                                    title='[OH]',
-                                    backgroundcolor='white',
-                                    gridcolor='lightgray',
-                                    showbackground=True,
-                                    linecolor='black',
-                                    linewidth=2
-                                )
-                            ),
-                            height=500,
-                            plot_bgcolor='white',
-                            paper_bgcolor='white',
-                            font=dict(
-                                family=PUBLICATION_STYLE['font_family'],
-                                size=12,
-                                color='black'
-                            )
-                        )
-                        
-                        st.plotly_chart(fig_3d2, use_container_width=True)
-                    
-                    progress_bar.progress(100)
-                    st.success("3D surfaces calculated!")
-            
-            # ====================================================================
-            # COMMENTS AND RECOMMENDATIONS
-            # ====================================================================
-            st.markdown("---")
-            st.header("💡 Comments and Recommendations")
-            
-            recommendations = []
-            
-            # Fitting quality
-            if r_value**2 > 0.98 and R2_method2 > 0.98:
-                recommendations.append("✅ Excellent agreement of both methods with data")
-            elif r_value**2 > 0.95 and R2_method2 > 0.95:
-                recommendations.append("✅ Good agreement of methods with data")
-            elif r_value**2 < 0.9 or R2_method2 < 0.9:
-                recommendations.append("⚠️ Consider excluding more points or checking data")
-            
-            # Parameter consistency
-            if dH_method1 != 0:
-                diff_percent = abs(dH_method2 - dH_method1) / abs(dH_method1) * 100
-                if diff_percent > 15:
-                    recommendations.append(f"⚠️ Significant ΔH° discrepancy: {diff_percent:.1f}%")
-                elif diff_percent > 5:
-                    recommendations.append(f"⚠️ Moderate ΔH° discrepancy: {diff_percent:.1f}%")
-                else:
-                    recommendations.append("✅ Good consistency in ΔH° between methods")
-            
-            # Display recommendations
-            for rec in recommendations:
-                if rec.startswith("✅"):
-                    st.success(rec)
-                elif rec.startswith("⚠️"):
-                    st.warning(rec)
-                else:
-                    st.info(rec)
-            
-            # Final recommendations
-            st.info(f"""
-            **For publications:**
-            - Method 1: ΔH° = {dH_method1/1000:.1f} ± {dH_ci/1000:.2f} kJ/mol
-            - Method 2: ΔH° = {dH_method2/1000:.1f} ± {dH_ci_m2/1000:.2f} kJ/mol
-            
-            **For modeling:**
-            - Recommended: Method 2 (direct fitting)
-            - ΔH° = {dH_method2/1000:.1f} ± {dH_ci_m2/1000:.2f} kJ/mol
-            - ΔS° = {dS_method2:.1f} ± {dS_ci_m2:.1f} J/(mol·K)
-            
-            **Average values:**
-            - ΔH° = {(dH_method1+dH_method2)/2000:.1f} kJ/mol
-            - ΔS° = {(dS_method1+dS_method2)/2:.1f} J/(mol·K)
-            """)
-            
-            # Save to history
-            calculation_entry = {
-                'timestamp': datetime.now().isoformat(),
-                'input_parameters': {
-                    'pH2O': pH2O_value,
-                    'Acc': Acc_value,
-                    'data_points': len(data_array)
-                },
-                'results': {
-                    'method1': {
-                        'dH': float(dH_method1),
-                        'dH_CI': float(dH_ci),
-                        'dS': float(dS_method1),
-                        'dS_CI': float(dS_ci),
-                        'R2': float(r_value**2)
-                    },
-                    'method2': {
-                        'dH': float(dH_method2),
-                        'dH_CI': float(dH_ci_m2),
-                        'dS': float(dS_method2),
-                        'dS_CI': float(dS_ci_m2),
-                        'R2': float(R2_method2)
-                    }
-                }
-            }
-            
-            st.session_state.calculation_history.append(calculation_entry)
-            
-    except Exception as e:
-        st.error(f"Calculation error: {str(e)}")
-        st.info("""
-        **Possible reasons:**
-        1. Incorrect data format
-        2. Physically impossible parameter values
-        3. Numerical convergence issues
         
-        **Recommendations:**
-        - Check data format
-        - Ensure all [OH] values < [Acc]
-        - Try excluding extreme points
+        st.plotly_chart(fig5, use_container_width=True)
+        
+        # ====================================================================
+        # COMMENTS AND RECOMMENDATIONS
+        # ====================================================================
+        st.markdown("---")
+        st.header("💡 Comments and Recommendations")
+        
+        recommendations = []
+        
+        # Fitting quality
+        r2_m1 = results['method1']['r_squared']
+        r2_m2 = results['method2']['R2']
+        
+        if r2_m1 > 0.98 and r2_m2 > 0.98:
+            recommendations.append("✅ Excellent agreement of both methods with data")
+        elif r2_m1 > 0.95 and r2_m2 > 0.95:
+            recommendations.append("✅ Good agreement of methods with data")
+        elif r2_m1 < 0.9 or r2_m2 < 0.9:
+            recommendations.append("⚠️ Consider excluding more points or checking data")
+        
+        # Parameter consistency
+        if results['method1']['dH'] != 0:
+            diff_percent = abs(results['method2']['dH'] - results['method1']['dH']) / abs(results['method1']['dH']) * 100
+            if diff_percent > 15:
+                recommendations.append(f"⚠️ Significant ΔH° discrepancy: {diff_percent:.1f}%")
+            elif diff_percent > 5:
+                recommendations.append(f"⚠️ Moderate ΔH° discrepancy: {diff_percent:.1f}%")
+            else:
+                recommendations.append("✅ Good consistency in ΔH° between methods")
+        
+        # Display recommendations
+        for rec in recommendations:
+            if rec.startswith("✅"):
+                st.success(rec)
+            elif rec.startswith("⚠️"):
+                st.warning(rec)
+            else:
+                st.info(rec)
+        
+        # Final recommendations
+        st.info(f"""
+        **For publications:**
+        - Method 1: ΔH° = {results['method1']['dH']/1000:.1f} ± {results['method1']['dH_ci']/1000:.2f} kJ/mol
+        - Method 2: ΔH° = {results['method2']['dH']/1000:.1f} ± {results['method2']['dH_ci']/1000:.2f} kJ/mol
+        
+        **For modeling:**
+        - Recommended: Method 2 (direct fitting)
+        - ΔH° = {results['method2']['dH']/1000:.1f} ± {results['method2']['dH_ci']/1000:.2f} kJ/mol
+        - ΔS° = {results['method2']['dS']:.1f} ± {results['method2']['dS_ci']:.1f} J/(mol·K)
+        
+        **Average values:**
+        - ΔH° = {(results['method1']['dH'] + results['method2']['dH'])/2000:.1f} kJ/mol
+        - ΔS° = {(results['method1']['dS'] + results['method2']['dS'])/2:.1f} J/(mol·K)
         """)
-        
-        if show_intermediate:
-            with st.expander("Technical error information"):
-                import traceback
-                st.code(traceback.format_exc())
-
-# Show calculation history if exists
-if len(st.session_state.calculation_history) > 0:
-    with st.sidebar.expander("📜 Calculation History", expanded=False):
-        for i, calc in enumerate(reversed(st.session_state.calculation_history[-5:])):
-            st.markdown(f"**Calculation {i+1}**")
-            st.markdown(f"Time: {calc['timestamp'][11:19]}")
-            st.markdown(f"ΔH₁: {calc['results']['method1']['dH']/1000:.1f} kJ/mol")
-            st.markdown(f"ΔH₂: {calc['results']['method2']['dH']/1000:.1f} kJ/mol")
-            st.markdown("---")
-
-# Initial information
-if not calculate_btn:
+else:
+    # Initial information
     st.markdown("""
     ## 📖 Instructions
     
     1. **Load data** in text field or choose file (CSV, TXT, Excel)
     2. **Set system parameters**: pH₂O and acceptor concentration [Acc]
     3. **Configure fitting**: exclude extreme points if necessary
-    4. **Click "Calculate"** to get thermodynamic parameters
+    4. **Graphs update automatically** when parameters change
     
     ## 🎯 Key Features
     
+    ✅ **Real-time calculation** - no calculate button needed  
     ✅ **Reliable numerical solution** instead of analytical formulas  
     ✅ **Errors and confidence intervals** for all parameters  
     ✅ **File upload** in various formats  
     ✅ **Data validation** with physical correctness check  
     ✅ **Export results** to CSV, JSON  
-    ✅ **Calculation caching** for fast operation  
-    ✅ **3D visualization** (optional)  
-    ✅ **Calculation history**  
-    ✅ **Publication-quality graphs** with English labels  
+    ✅ **Publication-quality graphs** with correct aspect ratio (3:4)  
+    ✅ **Black axes and ticks** for scientific publications  
+    ✅ **Bold axis titles** with larger font size  
+    ✅ **Rietveld-style combined plots** (fitting + residuals)  
+    ✅ **Correct point exclusion logic**  
     
     ## 📊 Data Format
     
@@ -1476,3 +1446,7 @@ if not calculate_btn:
     
     **Note:** Experimental data may show constant or slightly increasing [OH] with temperature within measurement error.
     """)
+
+# Information
+st.markdown("---")
+st.markdown("*Application automatically updates calculations when parameters change*")
