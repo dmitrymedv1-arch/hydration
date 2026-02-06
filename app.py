@@ -578,6 +578,25 @@ def create_combined_fitting_figure(title, x_title, y_title_top, y_title_bottom, 
         showlegend=True
     )
     
+    # Update layout to accommodate colorbar
+    fig.update_layout(
+        margin=dict(l=80, r=100, t=100, b=80),  # Увеличиваем правый отступ для цветовой шкалы
+        legend=dict(
+            font=dict(
+                family=PUBLICATION_STYLE['font_family'],
+                size=PUBLICATION_STYLE['legend_font_size'],
+                color='black'
+            ),
+            bordercolor='black',
+            borderwidth=1,
+            bgcolor='rgba(255,255,255,0.9)',
+            x=0.98,
+            y=0.98,
+            xanchor='right',
+            yanchor='top'
+        )
+    )
+    
     return fig
 
 # ============================================================================
@@ -1361,21 +1380,92 @@ if n_total_points > 0:
                 "[OH]",
                 "[OH]<sub>exp</sub> - [OH]<sub>model</sub>"
             )
+
+            # Bottom plot: Residuals with thermal scale
+            # Calculate color scale based on residual values
+            residuals = results['method2']['residuals']
+            abs_residuals = np.abs(residuals)
             
-            # Top plot: Experimental and model
-            fig3.add_trace(go.Scatter(
-                x=results['method2']['T_C'],
-                y=results['method2']['OH_exp'],
-                mode='markers',
-                marker=dict(
-                    size=PUBLICATION_STYLE['marker_size'],
-                    color=colors['experimental'],
-                    symbol='circle',
-                    line=dict(width=1, color='black')
-                ),
-                name='Experimental data',
-                showlegend=True
-            ), row=1, col=1)
+            if len(residuals) > 0:
+                max_abs = np.max(abs_residuals) if np.max(abs_residuals) > 0 else 1.0
+                # Normalize for color scale (0-1)
+                colors_normalized = abs_residuals / max_abs
+                
+                # Create color scale from blue (small) to red (large)
+                colorscale = [
+                    [0.0, 'blue'],      # Small residuals
+                    [0.5, 'white'],     # Medium
+                    [1.0, 'red']        # Large residuals
+                ]
+                
+                # Create color values
+                marker_colors = []
+                for val in colors_normalized:
+                    if val < 0.5:
+                        # Interpolate between blue and white
+                        r = int(255 * (val * 2))
+                        g = int(255 * (val * 2))
+                        b = 255
+                    else:
+                        # Interpolate between white and red
+                        r = 255
+                        g = int(255 * (2 - val * 2))
+                        b = int(255 * (2 - val * 2))
+                    marker_colors.append(f'rgb({r},{g},{b})')
+                
+                fig3.add_trace(go.Scatter(
+                    x=results['method2']['T_C'],
+                    y=results['method2']['residuals'],
+                    mode='markers',
+                    marker=dict(
+                        size=PUBLICATION_STYLE['marker_size'] - 2,
+                        color=marker_colors,  # Используем цветовую шкалу
+                        symbol='circle',
+                        line=dict(width=0.5, color='black'),
+                        showscale=True,  # Показываем цветовую шкалу
+                        colorbar=dict(
+                            title=dict(
+                                text='|Residual|',
+                                font=dict(
+                                    family=PUBLICATION_STYLE['font_family'],
+                                    size=10,
+                                    color='black'
+                                )
+                            ),
+                            titleside='right',
+                            thickness=15,
+                            len=0.3,
+                            x=1.02,
+                            y=0.7,
+                            yanchor='middle',
+                            tickfont=dict(
+                                family=PUBLICATION_STYLE['font_family'],
+                                size=10,
+                                color='black'
+                            )
+                        ),
+                        colorscale=colorscale,
+                        cmin=0,
+                        cmax=max_abs
+                    ),
+                    name='Residuals',
+                    showlegend=False
+                ), row=2, col=1)
+            else:
+                # Fallback if no residuals
+                fig3.add_trace(go.Scatter(
+                    x=results['method2']['T_C'],
+                    y=results['method2']['residuals'],
+                    mode='markers',
+                    marker=dict(
+                        size=PUBLICATION_STYLE['marker_size'] - 2,
+                        color='red',
+                        symbol='circle',
+                        line=dict(width=0.5, color='black')
+                    ),
+                    name='Residuals',
+                    showlegend=False
+                ), row=2, col=1)
             
             # Model curve
             T_fit = np.linspace(min(results['data']['T_C']), max(results['data']['T_C']), 200)
@@ -1683,6 +1773,7 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
 
 
 
