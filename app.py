@@ -1419,18 +1419,14 @@ if n_total_points > 0:
                     mode='markers',
                     marker=dict(
                         size=PUBLICATION_STYLE['marker_size'] - 2,
-                        color=marker_colors,  # Используем цветовую шкалу
-                        symbol='circle',
-                        line=dict(width=0.5, color='black'),
-                        showscale=True,  # Показываем цветовую шкалу
+                        color=abs_residuals,  # Цвет по величине остатка
+                        colorscale='RdBu_r',  # Обратная шкала Red-Blue
                         colorbar=dict(
-                            title=dict(
-                                text='|Residual|',
-                                font=dict(
-                                    family=PUBLICATION_STYLE['font_family'],
-                                    size=10,
-                                    color='black'
-                                )
+                            title='|Δ[OH]|',
+                            titlefont=dict(
+                                family=PUBLICATION_STYLE['font_family'],
+                                size=10,
+                                color='black'
                             ),
                             titleside='right',
                             thickness=15,
@@ -1444,7 +1440,9 @@ if n_total_points > 0:
                                 color='black'
                             )
                         ),
-                        colorscale=colorscale,
+                        symbol='circle',
+                        line=dict(width=0.5, color='black'),
+                        showscale=True,
                         cmin=0,
                         cmax=max_abs
                     ),
@@ -1773,6 +1771,7 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
 
 
 
