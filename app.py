@@ -1369,7 +1369,6 @@ if n_total_points > 0:
             
             st.plotly_chart(fig2, use_container_width=False)
         
-        # 3. Method 2: Combined Fitting and Residuals (Rietveld-style)
         st.markdown("### Method 2: Profile Fitting with Residuals")
         col3, col4 = st.columns([3, 1])
         
@@ -1400,12 +1399,29 @@ if n_total_points > 0:
                 showlegend=True
             ), row=1, col=1)
             
+            # Добавляем экспериментальные точки в верхний график
+            fig3.add_trace(go.Scatter(
+                x=results['method2']['T_C'],
+                y=results['method2']['OH_exp'],
+                mode='markers',
+                marker=dict(
+                    size=PUBLICATION_STYLE['marker_size'],
+                    color=colors['experimental'],
+                    symbol='circle',
+                    line=dict(width=1, color='black')
+                ),
+                name='Experimental data',
+                showlegend=True
+            ), row=1, col=1)
+            
             # Bottom plot: Residuals с тепловой шкалой
             residuals = results['method2']['residuals']
             if len(residuals) > 0:
                 abs_residuals = np.abs(residuals)
                 max_abs = np.max(abs_residuals) if np.max(abs_residuals) > 0 else 1.0
-
+                
+                # Создаем цветовую шкалу
+                # Создаем dummy trace для colorbar в верхнем графике
                 fig3.add_trace(go.Scatter(
                     x=[None],  # Пустые данные
                     y=[None],
@@ -1429,15 +1445,12 @@ if n_total_points > 0:
                             len=0.3,
                             x=1.02,
                             y=0.5,
+                            yanchor='middle',
                             tickfont=dict(
                                 family=PUBLICATION_STYLE['font_family'],
                                 size=10,
                                 color='black'
                             ),
-                            tickmode='auto',
-                            ticklen=4,
-                            tickwidth=1,
-                            tickcolor='black',
                             ticks='outside'
                         )
                     ),
@@ -1480,21 +1493,6 @@ if n_total_points > 0:
                     showlegend=False
                 ), row=2, col=1)
             
-            # Добавляем экспериментальные точки в верхний график
-            fig3.add_trace(go.Scatter(
-                x=results['method2']['T_C'],
-                y=results['method2']['OH_exp'],
-                mode='markers',
-                marker=dict(
-                    size=PUBLICATION_STYLE['marker_size'],
-                    color=colors['experimental'],
-                    symbol='circle',
-                    line=dict(width=1, color='black')
-                ),
-                name='Experimental data',
-                showlegend=True
-            ), row=1, col=1)
-            
             # Add zero line to residuals
             fig3.add_hline(
                 y=0, 
@@ -1503,7 +1501,7 @@ if n_total_points > 0:
             )
             
             st.plotly_chart(fig3, use_container_width=False)
-            
+        
             # Model curve
             T_fit = np.linspace(min(results['data']['T_C']), max(results['data']['T_C']), 200)
             T_K_fit = T_fit + 273.15
@@ -1810,6 +1808,7 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
 
 
 
