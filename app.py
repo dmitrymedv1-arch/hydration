@@ -1,5 +1,4 @@
 import streamlit as st
-import numpy as npimport streamlit as st
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -1670,4 +1669,3 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
-
