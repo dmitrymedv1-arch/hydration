@@ -1503,21 +1503,6 @@ if n_total_points > 0:
             )
             
             st.plotly_chart(fig3, use_container_width=False)
-            else:
-                # Fallback if no residuals
-                fig3.add_trace(go.Scatter(
-                    x=results['method2']['T_C'],
-                    y=results['method2']['residuals'],
-                    mode='markers',
-                    marker=dict(
-                        size=PUBLICATION_STYLE['marker_size'] - 2,
-                        color='red',
-                        symbol='circle',
-                        line=dict(width=0.5, color='black')
-                    ),
-                    name='Residuals',
-                    showlegend=False
-                ), row=2, col=1)
             
             # Model curve
             T_fit = np.linspace(min(results['data']['T_C']), max(results['data']['T_C']), 200)
@@ -1825,6 +1810,7 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
 
 
 
