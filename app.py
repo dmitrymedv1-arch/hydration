@@ -233,7 +233,7 @@ def parse_input_data(input_text, file_uploader=None):
     return np.array(data), f"Загружено {len(data)} точек из текста"
 
 def validate_input_data(data_array, Acc):
-    """Валидация входных данных"""
+    """Валидация входных данных с учетом экспериментальной погрешности"""
     if data_array is None or len(data_array) == 0:
         return False, "Нет данных для анализа"
     
@@ -249,21 +249,84 @@ def validate_input_data(data_array, Acc):
         issues.append("Есть подозрительно высокие температуры (>2000°C)")
     
     # Проверка концентраций
-    if np.any(OH <= 0):
-        issues.append("Есть неположительные концентрации [OH]")
-    if np.any(OH >= Acc):
-        issues.append("Есть концентрации [OH] >= [Acc] (физически невозможно)")
+    if np.any(OH < 0):
+        issues.append("Есть отрицательные концентрации [OH] (физически невозможно)")
+    if np.any(OH > Acc * 1.01):  # Разрешаем 1% превышение из-за погрешности
+        issues.append(f"Есть концентрации [OH] > [Acc] ({Acc:.3f})")
     
-    # Проверка монотонности (опционально)
+    # Проверка монотонности с учетом экспериментальной погрешности
     if len(T_C) > 1:
         sorted_idx = np.argsort(T_C)
-        if not np.all(np.diff(OH[sorted_idx]) <= 0):
-            issues.append("Концентрация [OH] не всегда убывает с температурой")
+        T_sorted = T_C[sorted_idx]
+        OH_sorted = OH[sorted_idx]
+        
+        # Рассчитываем относительные изменения
+        for i in range(1, len(T_sorted)):
+            if OH_sorted[i] > OH_sorted[i-1] * 1.01:  # Разрешаем 1% рост
+                issues.append(f"Концентрация растет с температурой: {T_sorted[i-1]}→{T_sorted[i]}°C, {OH_sorted[i-1]:.6f}→{OH_sorted[i]:.6f}")
+                break
     
     if issues:
-        return False, "; ".join(issues)
+        # Собираем только критические ошибки
+        critical_issues = [issue for issue in issues if "отрицательные" in issue or "[OH] > [Acc]" in issue]
+        if critical_issues:
+            return False, "; ".join(critical_issues[:3])  # Ограничиваем количество сообщений
+        else:
+            # Для некритических проблем показываем предупреждение, но продолжаем расчет
+            return True, f"Данные валидны (замечания: {issues[0]})"
     
     return True, "Данные валидны"
+
+def check_monotonicity_with_tolerance(T, OH, tolerance=0.02):
+    """
+    Проверка монотонности с допуском на экспериментальную погрешность
+    
+    Parameters:
+    -----------
+    T : array-like
+        Температуры
+    OH : array-like
+        Концентрации
+    tolerance : float
+        Допустимое относительное отклонение от монотонности (2% по умолчанию)
+    
+    Returns:
+    --------
+    is_monotonic : bool
+        True если данные монотонны в пределах допуска
+    violations : list
+        Список нарушений монотонности
+    """
+    if len(T) < 2:
+        return True, []
+    
+    # Сортируем по температуре
+    sorted_idx = np.argsort(T)
+    T_sorted = T[sorted_idx]
+    OH_sorted = OH[sorted_idx]
+    
+    violations = []
+    
+    for i in range(1, len(T_sorted)):
+        # Разрешаем небольшой рост в пределах погрешности
+        max_allowed = OH_sorted[i-1] * (1 + tolerance)
+        
+        if OH_sorted[i] > max_allowed:
+            # Рассчитываем статистику для контекста
+            avg_oh = (OH_sorted[i-1] + OH_sorted[i]) / 2
+            relative_change = (OH_sorted[i] - OH_sorted[i-1]) / avg_oh * 100
+            
+            violations.append({
+                'index': i,
+                'T_low': T_sorted[i-1],
+                'T_high': T_sorted[i],
+                'OH_low': OH_sorted[i-1],
+                'OH_high': OH_sorted[i],
+                'relative_change': relative_change,
+                'tolerance': tolerance * 100
+            })
+    
+    return len(violations) == 0, violations
 
 # Функции для экспорта
 def get_table_download_link(df, filename="results.csv"):
@@ -413,11 +476,56 @@ if calculate_btn:
         with st.spinner('Обработка данных...'):
             # Парсинг и валидация данных
             data_array, load_message = parse_input_data(data_input_text, uploaded_file)
+            
+            # Базовая валидация
             is_valid, valid_message = validate_input_data(data_array, Acc_value)
             
             if not is_valid:
                 st.error(f"Ошибка валидации: {valid_message}")
+                
+                # Показываем данные для отладки
+                with st.expander("📊 Загруженные данные для отладки"):
+                    df_debug = pd.DataFrame(data_array, columns=['Температура (°C)', '[OH]'])
+                    df_debug['ΔT'] = df_debug['Температура (°C)'].diff().fillna(0)
+                    df_debug['Δ[OH]'] = df_debug['[OH]'].diff().fillna(0)
+                    df_debug['Отн. изменение [OH] (%)'] = (df_debug['Δ[OH]'] / df_debug['[OH]'].shift(1) * 100).fillna(0)
+                    st.dataframe(df_debug, use_container_width=True)
+                
                 st.stop()
+            
+            # Дополнительная проверка монотонности с выводом деталей
+            T_C = data_array[:, 0]
+            OH_exp = data_array[:, 1]
+            
+            is_monotonic, violations = check_monotonicity_with_tolerance(T_C, OH_exp, tolerance=0.02)
+            
+            if not is_monotonic:
+                st.warning(f"⚠️ Нарушение монотонности обнаружено в {len(violations)} точках")
+                
+                with st.expander("🔍 Детали нарушений монотонности"):
+                    for i, violation in enumerate(violations[:3]):  # Показываем только первые 3
+                        st.markdown(f"""
+                        **Нарушение {i+1}:**
+                        - Температура: {violation['T_low']:.1f} → {violation['T_high']:.1f} °C
+                        - [OH]: {violation['OH_low']:.6f} → {violation['OH_high']:.6f}
+                        - Относительное изменение: **{violation['relative_change']:.2f}%**
+                        - Допустимый предел: {violation['tolerance']:.1f}%
+                        """)
+                    
+                    if len(violations) > 3:
+                        st.info(f"... и ещё {len(violations) - 3} нарушений")
+                
+                # Предлагаем опции пользователю
+                col1, col2 = st.columns(2)
+                with col1:
+                    continue_anyway = st.checkbox("Продолжить расчет несмотря на нарушения", value=True)
+                with col2:
+                    if st.button("Автоматически исключить выбросы"):
+                        # Простая логика для исключения выбросов
+                        st.info("Функция в разработке...")
+                
+                if not continue_anyway:
+                    st.stop()
             
             st.success(f"{load_message}. {valid_message}")
             
@@ -1199,4 +1307,5 @@ if not calculate_btn:
     with st.expander("📈 Пример графика результатов"):
         st.image("https://via.placeholder.com/800x400?text=Пример+результатов", 
                 caption="Пример визуализации результатов")
+
 
