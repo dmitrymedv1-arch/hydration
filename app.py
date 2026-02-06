@@ -966,12 +966,12 @@ with st.sidebar:
     
     Acc_value = st.number_input(
         '[Acc] = x:',
-        min_value=0.01,
-        max_value=5.99,
+        min_value=0,
+        max_value=1,
         value=st.session_state.default_params['Acc'],
         step=0.01,
         format="%.3f",
-        help="Acceptor dopant concentration (0 < x < 6)",
+        help="Acceptor dopant concentration (0 < x < 1)",
         key="Acc_input"
     )
     
@@ -1709,5 +1709,6 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
 
 
