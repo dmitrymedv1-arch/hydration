@@ -855,7 +855,7 @@ def create_3d_surface(results, colors, palette_design):
         ),
         name='Experimental data'
     ))
-    
+
     fig.update_layout(
         title=dict(
             text='3D Surface: [OH] = f(T, pH₂O)',
@@ -864,7 +864,7 @@ def create_3d_surface(results, colors, palette_design):
         scene=dict(
             xaxis=dict(
                 title='Temperature (°C)',
-                titlefont=dict(size=16, family='Times New Roman', color='black', weight='bold'),
+                title_font=dict(size=16, family='Times New Roman', color='black', weight='bold'),
                 tickfont=dict(size=12, family='Times New Roman', color='black'),
                 showline=True,
                 linewidth=2,
@@ -873,7 +873,7 @@ def create_3d_surface(results, colors, palette_design):
             ),
             yaxis=dict(
                 title='pH₂O (atm)',
-                titlefont=dict(size=16, family='Times New Roman', color='black', weight='bold'),
+                title_font=dict(size=16, family='Times New Roman', color='black', weight='bold'),
                 tickfont=dict(size=12, family='Times New Roman', color='black'),
                 showline=True,
                 linewidth=2,
@@ -882,7 +882,7 @@ def create_3d_surface(results, colors, palette_design):
             ),
             zaxis=dict(
                 title='[OH]',
-                titlefont=dict(size=16, family='Times New Roman', color='black', weight='bold'),
+                title_font=dict(size=16, family='Times New Roman', color='black', weight='bold'),
                 tickfont=dict(size=12, family='Times New Roman', color='black'),
                 showline=True,
                 linewidth=2,
@@ -1669,3 +1669,4 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
