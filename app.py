@@ -37,9 +37,9 @@ PUBLICATION_STYLE = {
     'axis_line_width': 2.0,
     'tick_length': 8,
     'tick_width': 1.5,
-    'plot_width': 400,  # ИЗМЕНЕНО: компактный размер
-    'plot_height': 533,  # Сохранение соотношения 3:4 (400 * 4/3 ≈ 533)
-    'plot_ratio': 4/3
+    'plot_width': 533,
+    'plot_height': 400,
+    'plot_ratio': 3/4
 }
 
 # Инициализация session state
@@ -1669,4 +1669,5 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
 
