@@ -1405,10 +1405,7 @@ if n_total_points > 0:
             if len(residuals) > 0:
                 abs_residuals = np.abs(residuals)
                 max_abs = np.max(abs_residuals) if np.max(abs_residuals) > 0 else 1.0
-                
-                # Создаем цветовую шкалу
-                # ВАЖНО: colorbar должен быть добавлен к trace на верхнем графике
-                # Создаем dummy trace для colorbar в верхнем графике
+
                 fig3.add_trace(go.Scatter(
                     x=[None],  # Пустые данные
                     y=[None],
@@ -1432,12 +1429,15 @@ if n_total_points > 0:
                             len=0.3,
                             x=1.02,
                             y=0.5,
-                            yanchor='middle',
                             tickfont=dict(
                                 family=PUBLICATION_STYLE['font_family'],
                                 size=10,
                                 color='black'
                             ),
+                            tickmode='auto',
+                            ticklen=4,
+                            tickwidth=1,
+                            tickcolor='black',
                             ticks='outside'
                         )
                     ),
@@ -1810,6 +1810,7 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
 
 
 
