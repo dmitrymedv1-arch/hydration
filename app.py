@@ -1573,7 +1573,7 @@ if n_total_points > 0:
         
         # 6. 3D Surface Plot (обязательно генерируется)
         st.markdown("### 3D Surface Plot")
-         fig6 = create_3d_surface(results, colors, palette_design, use_log_pH2O)
+        fig6 = create_3d_surface(results, colors, palette_design, use_log_pH2O)
         if fig6:
             st.plotly_chart(fig6, use_container_width=True)
         
@@ -1679,6 +1679,7 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
 
 
 
