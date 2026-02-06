@@ -1422,40 +1422,31 @@ if n_total_points > 0:
                 
                 # Создаем цветовую шкалу
                 # Создаем dummy trace для colorbar в верхнем графике
-                fig3.add_trace(go.Scatter(
-                    x=[None],  # Пустые данные
-                    y=[None],
-                    mode='markers',
-                    marker=dict(
-                        colorscale='RdBu_r',
-                        showscale=True,
-                        cmin=0,
-                        cmax=max_abs,
-                        colorbar=dict(
-                            title=dict(
-                                text='|Δ[OH]|',
-                                font=dict(
-                                    family=PUBLICATION_STYLE['font_family'],
-                                    size=10,
-                                    color='black'
-                                )
-                            ),
-                            titleside='right',
-                            thickness=15,
-                            len=0.3,
-                            x=1.02,
-                            y=0.5,
-                            yanchor='middle',
-                            tickfont=dict(
-                                family=PUBLICATION_STYLE['font_family'],
-                                size=10,
-                                color='black'
-                            ),
-                            ticks='outside'
-                        )
+                fig3.add_trace(
+                    go.Scatter(
+                        x=[0], y=[0],                   # хотя бы одна точка (можно и невидимая)
+                        mode='markers',
+                        marker=dict(
+                            size=0,                     # можно сделать невидимым
+                            color=[0],                  # минимальное значение
+                            colorscale='RdBu_r',
+                            cmin=0,
+                            cmax=max_abs,
+                            showscale=True,
+                            colorbar=go.scatter.marker.ColorBar(
+                                title='|Δ[OH]|',
+                                titleside='right',
+                                thickness=15,
+                                len=0.3,
+                                x=1.02,
+                                y=0.5,
+                                yanchor='middle'
+                            )
+                        ),
+                        showlegend=False
                     ),
-                    showlegend=False
-                ), row=1, col=1)
+                    row=1, col=1   # или row=2, col=1 — без разницы, лишь бы был в фигуре
+                )
                 
                 # Добавляем остатки с цветом по величине
                 colors_normalized = abs_residuals / max_abs
@@ -1808,6 +1799,7 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
 
 
 
