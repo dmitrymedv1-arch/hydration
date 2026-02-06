@@ -410,9 +410,9 @@ def create_publication_figure(title, x_title, y_title, width=None, height=None):
             bordercolor='black',
             borderwidth=1,
             bgcolor='rgba(255,255,255,0.9)',
-            x=0.02,
+            x=0.98,
             y=0.98,
-            xanchor='left',
+            xanchor='right',
             yanchor='top'
         ),
         showlegend=True
@@ -570,9 +570,9 @@ def create_combined_fitting_figure(title, x_title, y_title_top, y_title_bottom, 
             bordercolor='black',
             borderwidth=1,
             bgcolor='rgba(255,255,255,0.9)',
-            x=0.02,
+            x=0.98,
             y=0.98,
-            xanchor='left',
+            xanchor='right',
             yanchor='top'
         ),
         showlegend=True
@@ -1669,5 +1669,6 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
 
 
