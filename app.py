@@ -1433,7 +1433,7 @@ if n_total_points > 0:
                             cmin=0,
                             cmax=max_abs,
                             showscale=True,
-                            colorbar=go.scatter.marker.ColorBar(
+                            colorbar=dict(
                                 title='|Δ[OH]|',
                                 titleside='right',
                                 thickness=15,
@@ -1799,6 +1799,7 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
 
 
 
