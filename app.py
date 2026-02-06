@@ -793,8 +793,8 @@ def create_3d_surface(results, colors, palette_design, use_log_pH2O):
     T_max = max(results['data']['T_C'])
     T_range = np.linspace(T_min, T_max, 50)
     
-    pH2O_min = 0.01
-    pH2O_max = 0.5
+    pH2O_min = 0.00001
+    pH2O_max = 1
     
     if use_log_pH2O:
         # Логарифмическая шкала для pH2O
@@ -1679,6 +1679,7 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
 
 
 
