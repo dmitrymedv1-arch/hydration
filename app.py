@@ -783,7 +783,7 @@ def perform_calculations(data_input_text, uploaded_file, pH2O_value, Acc_value,
     
     return results, load_message, valid_message, data_array
 
-def create_3d_surface(results, colors, palette_design):
+def create_3d_surface(results, colors, palette_design, use_log_pH2O):
     """Create 3D surface plot"""
     if results is None:
         return None
@@ -795,7 +795,13 @@ def create_3d_surface(results, colors, palette_design):
     
     pH2O_min = 0.01
     pH2O_max = 0.5
-    pH2O_range = np.linspace(pH2O_min, pH2O_max, 50)
+    
+    if use_log_pH2O:
+        # Логарифмическая шкала для pH2O
+        pH2O_range = np.logspace(np.log10(pH2O_min), np.log10(pH2O_max), 50)
+    else:
+        # Линейная шкала для pH2O
+        pH2O_range = np.linspace(pH2O_min, pH2O_max, 50)
     
     T_grid, pH2O_grid = np.meshgrid(T_range, pH2O_range)
     
@@ -855,10 +861,13 @@ def create_3d_surface(results, colors, palette_design):
         ),
         name='Experimental data'
     ))
-
+    
+    # Определяем заголовок оси Y в зависимости от шкалы
+    y_axis_title = 'log(pH₂O) (atm)' if use_log_pH2O else 'pH₂O (atm)'
+    
     fig.update_layout(
         title=dict(
-            text='3D Surface: [OH] = f(T, pH₂O)',
+            text='3D Surface: [OH] = f(T, pH₂O)' + (' (log scale)' if use_log_pH2O else ''),
             font=dict(size=18, family='Times New Roman', color='black', weight='bold')
         ),
         scene=dict(
@@ -872,13 +881,14 @@ def create_3d_surface(results, colors, palette_design):
                 showgrid=False
             ),
             yaxis=dict(
-                title='pH₂O (atm)',
+                title=y_axis_title,
                 title_font=dict(size=16, family='Times New Roman', color='black', weight='bold'),
                 tickfont=dict(size=12, family='Times New Roman', color='black'),
                 showline=True,
                 linewidth=2,
                 linecolor='black',
-                showgrid=False
+                showgrid=False,
+                type='log' if use_log_pH2O else 'linear'  # Добавляем тип шкалы
             ),
             zaxis=dict(
                 title='[OH]',
@@ -1563,7 +1573,7 @@ if n_total_points > 0:
         
         # 6. 3D Surface Plot (обязательно генерируется)
         st.markdown("### 3D Surface Plot")
-        fig6 = create_3d_surface(results, colors, palette_design)
+         fig6 = create_3d_surface(results, colors, palette_design, use_log_pH2O)
         if fig6:
             st.plotly_chart(fig6, use_container_width=True)
         
@@ -1669,6 +1679,7 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
 
 
 
