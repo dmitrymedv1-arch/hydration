@@ -15,8 +15,9 @@ import zipfile
 import tempfile
 import os
 import plotly.io as pio
-from PIL import Image
-import io
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import plotly.express as px
 warnings.filterwarnings('ignore')
 
 # Настройки страницы
@@ -2216,6 +2217,7 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
 
 
 
