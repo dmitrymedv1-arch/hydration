@@ -350,7 +350,7 @@ def create_publication_figure(title, x_title, y_title, width=None, height=None):
             showline=True,
             linewidth=PUBLICATION_STYLE['axis_line_width'],
             linecolor='black',
-            mirror=False,  # Только нижняя линия
+            mirror=True,
             showgrid=False,
             zeroline=False,
             tickfont=dict(
@@ -377,7 +377,7 @@ def create_publication_figure(title, x_title, y_title, width=None, height=None):
             showline=True,
             linewidth=PUBLICATION_STYLE['axis_line_width'],
             linecolor='black',
-            mirror=False,  # Только левая линия
+            mirror=True,
             showgrid=False,
             zeroline=False,
             tickfont=dict(
@@ -441,7 +441,7 @@ def create_combined_fitting_figure(title, x_title, y_title_top, y_title_bottom, 
         showline=True,
         linewidth=PUBLICATION_STYLE['axis_line_width'],
         linecolor='black',
-        mirror=False,  # Только нижняя линия
+        mirror=True,
         showgrid=False,
         zeroline=False,
         tickfont=dict(
@@ -467,7 +467,7 @@ def create_combined_fitting_figure(title, x_title, y_title_top, y_title_bottom, 
         showline=True,
         linewidth=PUBLICATION_STYLE['axis_line_width'],
         linecolor='black',
-        mirror=False,  # Только левая линия
+        mirror=True,
         showgrid=False,
         zeroline=False,
         tickfont=dict(
@@ -494,7 +494,7 @@ def create_combined_fitting_figure(title, x_title, y_title_top, y_title_bottom, 
         showline=True,
         linewidth=PUBLICATION_STYLE['axis_line_width'],
         linecolor='black',
-        mirror=False,  # Только нижняя линия
+        mirror=True,
         showgrid=False,
         zeroline=False,
         tickfont=dict(
@@ -520,7 +520,7 @@ def create_combined_fitting_figure(title, x_title, y_title_top, y_title_bottom, 
         showline=True,
         linewidth=PUBLICATION_STYLE['axis_line_width'],
         linecolor='black',
-        mirror=False,  # Только левая линия
+        mirror=True,
         showgrid=False,
         zeroline=True,
         zerolinewidth=1,
@@ -1709,6 +1709,7 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
 
 
 
