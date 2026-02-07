@@ -607,21 +607,17 @@ def create_download_zip(plots_dict, results_df, results_json, results):
     zip_buffer = io.BytesIO()
     
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-        # Save plots as PNG with high resolution
+        # Save plots as HTML instead of PNG
         for name, fig in plots_dict.items():
-            try:
-                # Try with kaleido engine
-                img_bytes = fig.to_image(format='png', width=2400, height=1800, scale=2, engine='kaleido')
-            except (RuntimeError, ImportError, ValueError) as e:
-                # Fallback to default engine if kaleido fails
-                try:
-                    img_bytes = fig.to_image(format='png', width=2400, height=1800, scale=2)
-                except Exception as e2:
-                    # Last resort: smaller image
-                    st.warning(f"Could not save high-res image for {name}: {e2}")
-                    img_bytes = fig.to_image(format='png', width=1200, height=900)
+            # Save as HTML instead of PNG (не требует Chrome/kaleido)
+            html_buffer = io.StringIO()
+            fig.write_html(html_buffer, include_plotlyjs='cdn', full_html=True)
+            zip_file.writestr(f'plots/{name}.html', html_buffer.getvalue())
             
-            zip_file.writestr(f'plots/{name}.png', img_bytes)
+            # Также сохраняем как JSON для возможности пересоздания графиков
+            json_buffer = io.StringIO()
+            fig.write_json(json_buffer)
+            zip_file.writestr(f'plots/{name}.json', json_buffer.getvalue())
         
         # Save processed data
         if results_df is not None:
@@ -670,24 +666,20 @@ RECOMMENDATIONS:
 {('Average ΔS° = ' + f'{(results["method1"]["dS"] + results["method2"]["dS"])/2:.1f} J/(mol·K)' if results else '')}
 
 Archive Contents:
-1. plots/ - directory with high-resolution figures (600 DPI equivalent)
+1. plots/ - directory with interactive HTML plots and JSON data
 2. processed_data.csv - processed data with calculated columns
 3. parameters.json - all analysis parameters in JSON format
 
-Plots included:
-1. experimental_data.png - Experimental data with [Acc] limit
-2. method1_lnkw_vs_1000t.png - Method 1: ln(Kw) vs 1000/T
-3. method2_fitting_residuals.png - Method 2: Profile fitting with residuals
-4. method_comparison.png - Comparison of Method 1 and Method 2 curves
-5. kw_temperature_dependence.png - Temperature dependence of Kw
-6. 3d_surface.png - 3D surface plot of [OH] = f(T, pH₂O)
+Plots included (as HTML and JSON):
+1. experimental_data - Experimental data with [Acc] limit
+2. method1_lnkw_vs_1000t - Method 1: ln(Kw) vs 1000/T
+3. method2_fitting_residuals - Method 2: Profile fitting with residuals
+4. method_comparison - Comparison of Method 1 and Method 2 curves
+5. kw_temperature_dependence - Temperature dependence of Kw
+6. 3d_surface - 3D surface plot of [OH] = f(T, pH₂O)
 
-All plots are in publication style with:
-- Times New Roman font family
-- Black axes and ticks
-- White background
-- Appropriate font sizes (16 ppt axis titles, 12 ppt tick labels)
-- High resolution for publication (600 DPI equivalent)
+HTML plots can be opened in any web browser.
+JSON files contain the raw plot data and can be loaded in Plotly.
 """
             zip_file.writestr('analysis_report.txt', report)
         
@@ -698,14 +690,25 @@ All plots are in publication style with:
 This archive contains all results from the thermodynamic analysis of AB₁₋ₓAccₓO₃₋ₓ/₂ based on proton concentration temperature profile.
 
 Files included:
-1. plots/ - High-resolution publication-ready figures
+1. plots/ - Interactive HTML plots and JSON plot data
 2. processed_data.csv - Processed experimental data with calculated values
 3. parameters.json - All analysis parameters in machine-readable format
 4. analysis_report.txt - Text summary of results and recommendations
 
-All plots are saved as PNG with high resolution (equivalent to 600 DPI) suitable for scientific publications.
+HTML plots:
+- Can be opened in any web browser
+- Are fully interactive (zoom, pan, hover for values)
+- Maintain publication styling (Times New Roman, black axes, etc.)
+- Include all data points and fitted curves
 
-For questions or additional analysis, please refer to the original application.
+JSON files:
+- Contain complete plot data
+- Can be loaded in Plotly for further modification
+- Include all styling and layout information
+
+Note: Due to server limitations, plots are saved as interactive HTML instead of static PNG.
+To convert HTML to PNG for publication, open the HTML files in a browser and take screenshots,
+or use Plotly's export tools if you have kaleido/Chrome installed locally.
 """
         zip_file.writestr('README.txt', readme)
     
@@ -1881,5 +1884,6 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
 
 
