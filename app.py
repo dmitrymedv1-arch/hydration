@@ -1121,12 +1121,12 @@ if n_total_points > 0:
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            st.metric("ΔH°", f"{results['method1']['dH']/1000:.2f} ± {results['method1']['dH_ci']/1000:.2f} kJ/mol",
+            st.metric("ΔH°", f"{results['method1']['dH']/1000:.2f} ± {results['method1']['dH_ci']/1000:.1f} kJ/mol",
                      delta=f"{results['method1']['dH']:.0f} ± {results['method1']['dH_ci']:.0f} J/mol")
             st.metric("Points analyzed", results['method1']['n_valid'])
         
         with col2:
-            st.metric("ΔS°", f"{results['method1']['dS']:.2f} ± {results['method1']['dS_ci']:.2f} J/(mol·K)")
+            st.metric("ΔS°", f"{results['method1']['dS']:.2f} ± {results['method1']['dS_ci']:.1f} J/(mol·K)")
             st.metric("R² coefficient", f"{results['method1']['r_squared']:.4f}")
         
         with col3:
@@ -1148,12 +1148,12 @@ if n_total_points > 0:
             st.metric("RMSE", f"{results['method2']['RMSE']:.6f}" if not np.isnan(results['method2']['RMSE']) else "N/A")
         
         with col2:
-            st.metric("ΔH°", f"{results['method2']['dH']/1000:.2f} ± {results['method2']['dH_ci']/1000:.2f} kJ/mol",
+            st.metric("ΔH°", f"{results['method2']['dH']/1000:.2f} ± {results['method2']['dH_ci']/1000:.1f} kJ/mol",
                      delta=f"{results['method2']['dH']:.0f} ± {results['method2']['perr'][0]:.0f} J/mol" if 'perr' in results['method2'] else f"{results['method2']['dH']:.0f} J/mol")
             st.metric("Points analyzed", results['method2']['n_points'])
         
         with col3:
-            st.metric("ΔS°", f"{results['method2']['dS']:.2f} ± {results['method2']['dS_ci']:.2f} J/(mol·K)",
+            st.metric("ΔS°", f"{results['method2']['dS']:.2f} ± {results['method2']['dS_ci']:.1f} J/(mol·K)",
                      delta=f"± {results['method2']['perr'][1]:.2f}" if 'perr' in results['method2'] else "")
             st.metric("SSE", f"{results['method2']['SSE']:.6f}" if not np.isnan(results['method2']['SSE']) else "N/A")
         
@@ -1174,19 +1174,19 @@ if n_total_points > 0:
                 'Fitting error'
             ],
             'Method 1': [
-                f"{results['method1']['dH']/1000:.2f}",
-                f"±{results['method1']['dH_ci']/1000:.2f}",
-                f"{results['method1']['dS']:.2f}",
-                f"±{results['method1']['dS_ci']:.2f}",
+                f"{results['method1']['dH']/1000:.1f}",
+                f"±{results['method1']['dH_ci']/1000:.1f}",
+                f"{results['method1']['dS']:.1f}",
+                f"±{results['method1']['dS_ci']:.1f}",
                 f"{results['method1']['r_squared']:.4f}",
                 f"{results['method1']['n_valid']}",
                 f"std_err={results['method1']['std_err']:.4f}"
             ],
             'Method 2': [
-                f"{results['method2']['dH']/1000:.2f}",
-                f"±{results['method2']['dH_ci']/1000:.2f}",
-                f"{results['method2']['dS']:.2f}",
-                f"±{results['method2']['dS_ci']:.2f}",
+                f"{results['method2']['dH']/1000:.1f}",
+                f"±{results['method2']['dH_ci']/1000:.1f}",
+                f"{results['method2']['dS']:.1f}",
+                f"±{results['method2']['dS_ci']:.1f}",
                 f"{results['method2']['R2']:.4f}",
                 f"{results['method2']['n_points']}",
                 f"RMSE={results['method2']['RMSE']:.6f}" if not np.isnan(results['method2']['RMSE']) else "N/A"
@@ -1737,6 +1737,7 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
 
 
 
