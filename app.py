@@ -53,7 +53,7 @@ if 'calculation_history' not in st.session_state:
 if 'default_params' not in st.session_state:
     st.session_state.default_params = {
         'pH2O': 0.03,
-        'Acc': 0.2,
+        'Acc': 0.48,
         'data': """748.8659794 0.007038664
 720.8247423 0.006256591
 697.7319588 0.009384886
@@ -2273,3 +2273,4 @@ else:
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
 st.markdown("**Note on Bayesian fitting:** Requires PyMC and ArviZ packages. Install with: `pip install pymc arviz`")
+
