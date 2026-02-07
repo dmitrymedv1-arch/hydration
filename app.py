@@ -1024,6 +1024,12 @@ def save_all_figures_to_zip(results, colors, palette_design, use_log_pH2O,
                            show_experimental_comparison, pH2O_value, Acc_value):
     """Save all generated figures to a ZIP file in high resolution"""
     
+    # Проверяем установку Kaleido
+    is_installed, message = check_kaleido_installation()
+    if not is_installed:
+        st.warning(f"Cannot generate high-res images: {message}")
+        return None, 0
+    
     # Создаем временный ZIP файл
     with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as tmp_zip:
         zip_path = tmp_zip.name
@@ -2263,6 +2269,7 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
 
 
 
