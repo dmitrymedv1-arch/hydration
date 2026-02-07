@@ -14,6 +14,8 @@ import plotly.express as px
 import io
 import zipfile
 import plotly.io as pio
+import sys
+import os
 warnings.filterwarnings('ignore')
 
 # Настройки страницы
@@ -209,6 +211,168 @@ def calculate_Kw_with_validation(T_K, OH, pH2O, Acc):
         OH_final[mask_reasonable], 
         Kw_final[mask_reasonable]
     )
+
+# ============================================================================
+# BAYESIAN FITTING FUNCTIONS
+# ============================================================================
+
+def perform_bayesian_fitting(T_K, OH_exp, pH2O_value, Acc_value, dH_init, dS_init):
+    """Perform Bayesian fitting using MCMC sampling"""
+    try:
+        # Try to import PyMC
+        import pymc as pm
+        import arviz as az
+        
+        # Define Bayesian model
+        with pm.Model() as model:
+            # Priors
+            dH = pm.Normal('dH', mu=dH_init, sigma=abs(dH_init)*0.5)
+            dS = pm.Normal('dS', mu=dS_init, sigma=abs(dS_init)*0.5)
+            
+            # Expected value
+            OH_pred = pm.Deterministic('OH_pred', 
+                analytical_OH_numerical(T_K, pH2O_value, Acc_value, dH, dS)
+            )
+            
+            # Likelihood
+            sigma = pm.HalfNormal('sigma', sigma=0.01)
+            likelihood = pm.Normal('likelihood', mu=OH_pred, sigma=sigma, observed=OH_exp)
+        
+        # Sample
+        with model:
+            trace = pm.sample(
+                draws=2000,
+                tune=1000,
+                chains=2,
+                cores=1,
+                return_inferencedata=True,
+                progressbar=False
+            )
+        
+        # Extract results
+        summary = az.summary(trace, var_names=['dH', 'dS', 'sigma'], hdi_prob=0.95)
+        
+        # Calculate credible intervals
+        dH_mean = float(summary.loc['dH', 'mean'])
+        dH_hdi_low = float(summary.loc['dH', 'hdi_2.5%'])
+        dH_hdi_high = float(summary.loc['dH', 'hdi_97.5%'])
+        
+        dS_mean = float(summary.loc['dS', 'mean'])
+        dS_hdi_low = float(summary.loc['dS', 'hdi_2.5%'])
+        dS_hdi_high = float(summary.loc['dS', 'hdi_97.5%'])
+        
+        # Calculate predictions
+        OH_model_bayes = analytical_OH_numerical(T_K, pH2O_value, Acc_value, dH_mean, dS_mean)
+        residuals_bayes = OH_exp - OH_model_bayes
+        
+        # Calculate R²
+        SSE = np.sum(residuals_bayes**2)
+        SST = np.sum((OH_exp - np.mean(OH_exp))**2)
+        R2_bayes = 1 - (SSE/SST) if SST > 0 else 0
+        RMSE_bayes = np.sqrt(SSE / len(OH_exp))
+        
+        return {
+            'success': True,
+            'dH': dH_mean,
+            'dH_hdi_low': dH_hdi_low,
+            'dH_hdi_high': dH_hdi_high,
+            'dS': dS_mean,
+            'dS_hdi_low': dS_hdi_low,
+            'dS_hdi_high': dS_hdi_high,
+            'R2': R2_bayes,
+            'RMSE': RMSE_bayes,
+            'OH_model': OH_model_bayes,
+            'residuals': residuals_bayes,
+            'trace': trace
+        }
+        
+    except ImportError as e:
+        # PyMC not available, use simple bootstrap method
+        st.warning(f"PyMC not available: {e}. Using bootstrap method for Bayesian intervals.")
+        return perform_bootstrap_fitting(T_K, OH_exp, pH2O_value, Acc_value, dH_init, dS_init)
+    except Exception as e:
+        st.warning(f"Bayesian fitting failed: {e}. Using bootstrap method.")
+        return perform_bootstrap_fitting(T_K, OH_exp, pH2O_value, Acc_value, dH_init, dS_init)
+
+def perform_bootstrap_fitting(T_K, OH_exp, pH2O_value, Acc_value, dH_init, dS_init):
+    """Simple bootstrap method for uncertainty estimation"""
+    n_bootstrap = 100
+    n_points = len(T_K)
+    
+    dH_samples = []
+    dS_samples = []
+    
+    for i in range(n_bootstrap):
+        # Resample with replacement
+        indices = np.random.choice(n_points, n_points, replace=True)
+        T_K_boot = T_K[indices]
+        OH_boot = OH_exp[indices]
+        
+        try:
+            # Fit to resampled data
+            def model_OH_fit(T_K_fit, dH, dS):
+                return analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, dH, dS)
+            
+            popt, _ = curve_fit(
+                model_OH_fit,
+                T_K_boot,
+                OH_boot,
+                p0=[dH_init, dS_init],
+                bounds=([-500000, -500], [0, 500]),
+                maxfev=5000
+            )
+            
+            dH_samples.append(popt[0])
+            dS_samples.append(popt[1])
+        except:
+            continue
+    
+    if len(dH_samples) < 10:
+        # Not enough successful fits, return simple results
+        return {
+            'success': False,
+            'dH': dH_init,
+            'dH_hdi_low': dH_init - abs(dH_init)*0.1,
+            'dH_hdi_high': dH_init + abs(dH_init)*0.1,
+            'dS': dS_init,
+            'dS_hdi_low': dS_init - abs(dS_init)*0.1,
+            'dS_hdi_high': dS_init + abs(dS_init)*0.1,
+            'R2': 0,
+            'RMSE': 0,
+            'OH_model': analytical_OH_numerical(T_K, pH2O_value, Acc_value, dH_init, dS_init),
+            'residuals': OH_exp - analytical_OH_numerical(T_K, pH2O_value, Acc_value, dH_init, dS_init)
+        }
+    
+    # Calculate percentiles
+    dH_samples = np.array(dH_samples)
+    dS_samples = np.array(dS_samples)
+    
+    dH_mean = np.mean(dH_samples)
+    dS_mean = np.mean(dS_samples)
+    
+    # Calculate predictions
+    OH_model_boot = analytical_OH_numerical(T_K, pH2O_value, Acc_value, dH_mean, dS_mean)
+    residuals_boot = OH_exp - OH_model_boot
+    
+    # Calculate R²
+    SSE = np.sum(residuals_boot**2)
+    SST = np.sum((OH_exp - np.mean(OH_exp))**2)
+    R2_boot = 1 - (SSE/SST) if SST > 0 else 0
+    RMSE_boot = np.sqrt(SSE / len(OH_exp))
+    
+    return {
+        'success': True,
+        'dH': dH_mean,
+        'dH_hdi_low': np.percentile(dH_samples, 2.5),
+        'dH_hdi_high': np.percentile(dH_samples, 97.5),
+        'dS': dS_mean,
+        'dS_hdi_low': np.percentile(dS_samples, 2.5),
+        'dS_hdi_high': np.percentile(dS_samples, 97.5),
+        'R2': R2_boot,
+        'RMSE': RMSE_boot,
+        'OH_model': OH_model_boot,
+        'residuals': residuals_boot
+    }
 
 # ============================================================================
 # DATA PROCESSING FUNCTIONS
@@ -601,20 +765,36 @@ def get_json_download_link(data, filename="parameters.json"):
     href = f'<a href="data:application/json;base64,{b64}" download="{filename}">📥 Download JSON</a>'
     return href
 
-# Полная замена функции create_download_zip с обработкой ошибок
+def save_plot_with_kaleido(fig, name):
+    """Save plot as PNG if kaleido is available, otherwise return None"""
+    try:
+        # Try to save as PNG
+        img_buffer = io.BytesIO()
+        fig.write_image(img_buffer, format='png', engine='kaleido')
+        img_buffer.seek(0)
+        return img_buffer
+    except Exception as e:
+        # kaleido not available
+        return None
+
 def create_download_zip(plots_dict, results_df, results_json, results):
     """Create ZIP archive with all plots and data"""
     zip_buffer = io.BytesIO()
     
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-        # Save plots as HTML instead of PNG
+        # Save plots as HTML and PNG
         for name, fig in plots_dict.items():
-            # Save as HTML instead of PNG (не требует Chrome/kaleido)
+            # Save as HTML
             html_buffer = io.StringIO()
             fig.write_html(html_buffer, include_plotlyjs='cdn', full_html=True)
             zip_file.writestr(f'plots/{name}.html', html_buffer.getvalue())
             
-            # Также сохраняем как JSON для возможности пересоздания графиков
+            # Try to save as PNG if kaleido is available
+            png_buffer = save_plot_with_kaleido(fig, name)
+            if png_buffer is not None:
+                zip_file.writestr(f'plots/{name}.png', png_buffer.getvalue())
+            
+            # Also save as JSON for plot reconstruction
             json_buffer = io.StringIO()
             fig.write_json(json_buffer)
             zip_file.writestr(f'plots/{name}.json', json_buffer.getvalue())
@@ -633,6 +813,7 @@ def create_download_zip(plots_dict, results_df, results_json, results):
         
         # Save summary report
         if results is not None:
+            # Уточняем обозначения для энтальпии
             report = f"""THERMODYNAMIC ANALYSIS RESULTS
 ========================================
 
@@ -645,40 +826,51 @@ pH₂O = {results['parameters']['pH2O']:.5f} atm
 
 METHOD 1 - EQUILIBRIUM CONSTANT ANALYSIS:
 -----------------------------------------
-ΔH° = {results['method1']['dH']/1000:.2f} ± {results['method1']['dH_ci']/1000:.2f} kJ/mol
+ΔH_hydr° = {results['method1']['dH']/1000:.2f} ± {results['method1']['dH_ci']/1000:.2f} kJ/mol (hydration enthalpy)
 ΔS° = {results['method1']['dS']:.2f} ± {results['method1']['dS_ci']:.2f} J/(mol·K)
 R² = {results['method1']['r_squared']:.4f}
 Points analyzed: {results['method1']['n_valid']}
 Excluded points (low/high): {results['parameters']['exclude_low_m1']}/{results['parameters']['exclude_high_m1']}
 
-METHOD 2 - DIRECT FITTING:
---------------------------
-ΔH° = {results['method2']['dH']/1000:.2f} ± {results['method2']['dH_ci']/1000:.2f} kJ/mol
+METHOD 2 - DIRECT FITTING (curve_fit):
+--------------------------------------
+ΔH_hydr° = {results['method2']['dH']/1000:.2f} ± {results['method2']['dH_ci']/1000:.2f} kJ/mol (hydration enthalpy)
 ΔS° = {results['method2']['dS']:.2f} ± {results['method2']['dS_ci']:.2f} J/(mol·K)
 R² = {results['method2']['R2']:.4f}
 RMSE = {results['method2']['RMSE']:.6f}
 Points analyzed: {results['method2']['n_points']}
 Excluded points (low/high): {results['parameters']['exclude_low_m2']}/{results['parameters']['exclude_high_m2']}
 
+{'METHOD 3 - BAYESIAN FITTING:' if 'method3' in results else ''}
+{'----------------------------------------' if 'method3' in results else ''}
+{f"ΔH_hydr° = {results['method3']['dH']/1000:.2f} [{results['method3']['dH_hdi_low']/1000:.2f}, {results['method3']['dH_hdi_high']/1000:.2f}] kJ/mol (hydration enthalpy)" if 'method3' in results else ''}
+{f"ΔS° = {results['method3']['dS']:.2f} [{results['method3']['dS_hdi_low']:.2f}, {results['method3']['dS_hdi_high']:.2f}] J/(mol·K)" if 'method3' in results else ''}
+{f"R² = {results['method3']['R2']:.4f}" if 'method3' in results else ''}
+{f"RMSE = {results['method3']['RMSE']:.6f}" if 'method3' in results else ''}
+
 RECOMMENDATIONS:
 ----------------
-{('Average ΔH° = ' + f'{(results["method1"]["dH"] + results["method2"]["dH"])/2000:.1f} kJ/mol' if results else '')}
+{('Average ΔH_hydr° = ' + f'{(results["method1"]["dH"] + results["method2"]["dH"])/2000:.1f} kJ/mol' if results else '')}
 {('Average ΔS° = ' + f'{(results["method1"]["dS"] + results["method2"]["dS"])/2:.1f} J/(mol·K)' if results else '')}
 
+Note: ΔH_hydr° represents hydration enthalpy (negative for exothermic hydration).
+
 Archive Contents:
-1. plots/ - directory with interactive HTML plots and JSON data
+1. plots/ - directory with interactive HTML plots, PNG images (if available), and JSON data
 2. processed_data.csv - processed data with calculated columns
 3. parameters.json - all analysis parameters in JSON format
 
-Plots included (as HTML and JSON):
+Plots included (as HTML and PNG if kaleido available):
 1. experimental_data - Experimental data with [Acc] limit
 2. method1_lnkw_vs_1000t - Method 1: ln(Kw) vs 1000/T
 3. method2_fitting_residuals - Method 2: Profile fitting with residuals
 4. method_comparison - Comparison of Method 1 and Method 2 curves
 5. kw_temperature_dependence - Temperature dependence of Kw
-6. 3d_surface - 3D surface plot of [OH] = f(T, pH₂O)
+6. 3d_surface - 3D surface plot of [OH] = f(T, pH₂O) - linear pH₂O scale
+7. 3d_surface_log - 3D surface plot of [OH] = f(T, pH₂O) - logarithmic pH₂O scale
 
 HTML plots can be opened in any web browser.
+PNG files are included if kaleido engine was available on server.
 JSON files contain the raw plot data and can be loaded in Plotly.
 """
             zip_file.writestr('analysis_report.txt', report)
@@ -690,7 +882,7 @@ JSON files contain the raw plot data and can be loaded in Plotly.
 This archive contains all results from the thermodynamic analysis of AB₁₋ₓAccₓO₃₋ₓ/₂ based on proton concentration temperature profile.
 
 Files included:
-1. plots/ - Interactive HTML plots and JSON plot data
+1. plots/ - Interactive HTML plots, PNG images (if available), and JSON plot data
 2. processed_data.csv - Processed experimental data with calculated values
 3. parameters.json - All analysis parameters in machine-readable format
 4. analysis_report.txt - Text summary of results and recommendations
@@ -701,14 +893,17 @@ HTML plots:
 - Maintain publication styling (Times New Roman, black axes, etc.)
 - Include all data points and fitted curves
 
+PNG plots:
+- Static images for publications
+- Generated if kaleido engine was available on server
+- If not available, use HTML plots and take screenshots
+
 JSON files:
 - Contain complete plot data
 - Can be loaded in Plotly for further modification
 - Include all styling and layout information
 
-Note: Due to server limitations, plots are saved as interactive HTML instead of static PNG.
-To convert HTML to PNG for publication, open the HTML files in a browser and take screenshots,
-or use Plotly's export tools if you have kaleido/Chrome installed locally.
+Note: ΔH_hydr° represents hydration enthalpy (negative for exothermic hydration reaction).
 """
         zip_file.writestr('README.txt', readme)
     
@@ -728,7 +923,7 @@ def get_zip_download_link(zip_buffer, filename="thermodynamics_results.zip"):
 def perform_calculations(data_input_text, uploaded_file, pH2O_value, Acc_value,
                         exclude_low_T_method1, exclude_high_T_method1,
                         exclude_low_T_method2, exclude_high_T_method2,
-                        use_log_pH2O, colors, scale_design, palette_design):
+                        use_bayesian_fitting, colors, contour_count, residuals_palette, palette_design):
     """Perform all calculations and return results"""
     
     # Parse and validate data
@@ -772,7 +967,7 @@ def perform_calculations(data_input_text, uploaded_file, pH2O_value, Acc_value,
     slope, intercept, r_value, p_value, std_err = stats.linregress(x_m1, ln_Kw)
     
     # Calculate parameters with errors
-    dH_method1 = -slope * R * 1000  # J/mol
+    dH_method1 = -slope * R * 1000  # J/mol (hydration enthalpy, negative for exothermic)
     dS_method1 = intercept * R      # J/(mol·K)
     
     # Errors
@@ -790,7 +985,7 @@ def perform_calculations(data_input_text, uploaded_file, pH2O_value, Acc_value,
         dS_ci = 0
     
     # ========================================================================
-    # METHOD 2: Direct Fitting
+    # METHOD 2: Direct Fitting (curve_fit)
     # ========================================================================
     
     # Apply point exclusion
@@ -845,6 +1040,19 @@ def perform_calculations(data_input_text, uploaded_file, pH2O_value, Acc_value,
         OH_model_m2 = analytical_OH_numerical(T_K_m2, pH2O_value, Acc_value, dH_method2, dS_method2)
         residuals = OH_exp_m2 - OH_model_m2
     
+    # ========================================================================
+    # METHOD 3: Bayesian Fitting (optional)
+    # ========================================================================
+    method3_results = None
+    if use_bayesian_fitting and len(T_K_m2) >= 3:
+        try:
+            method3_results = perform_bayesian_fitting(
+                T_K_m2, OH_exp_m2, pH2O_value, Acc_value, dH_method2, dS_method2
+            )
+        except Exception as e:
+            st.warning(f"Bayesian fitting failed: {e}")
+            method3_results = None
+    
     # Prepare results dictionary
     results = {
         'data': {
@@ -897,17 +1105,22 @@ def perform_calculations(data_input_text, uploaded_file, pH2O_value, Acc_value,
             'exclude_high_m1': exclude_high_T_method1,
             'exclude_low_m2': exclude_low_T_method2,
             'exclude_high_m2': exclude_high_T_method2,
-            'use_log_pH2O': use_log_pH2O,
+            'use_bayesian_fitting': use_bayesian_fitting,
             'colors': colors,
-            'scale_design': scale_design,
+            'contour_count': contour_count,
+            'residuals_palette': residuals_palette,
             'palette_design': palette_design
         }
     }
     
+    # Add Bayesian results if available
+    if method3_results is not None:
+        results['method3'] = method3_results
+    
     return results, load_message, valid_message, data_array
 
-def create_3d_surface(results, colors, palette_design, use_log_pH2O):
-    """Create 3D surface plot"""
+def create_3d_surface(results, colors, palette_design, contour_count, use_log_scale=False):
+    """Create 3D surface plot with adjustable contour count"""
     if results is None:
         return None
     
@@ -919,12 +1132,14 @@ def create_3d_surface(results, colors, palette_design, use_log_pH2O):
     pH2O_min = 0.00001
     pH2O_max = 1
     
-    if use_log_pH2O:
+    if use_log_scale:
         # Логарифмическая шкала для pH2O
         pH2O_range = np.logspace(np.log10(pH2O_min), np.log10(pH2O_max), 50)
+        y_axis_title = 'log(pH₂O) (atm)'
     else:
         # Линейная шкала для pH2O
         pH2O_range = np.linspace(pH2O_min, pH2O_max, 50)
+        y_axis_title = 'pH₂O (atm)'
     
     T_grid, pH2O_grid = np.meshgrid(T_range, pH2O_range)
     
@@ -952,8 +1167,18 @@ def create_3d_surface(results, colors, palette_design, use_log_pH2O):
         colorscale = 'Magma'
     elif palette_design == 'Cividis':
         colorscale = 'Cividis'
-    else:  # 'Rainbow'
+    elif palette_design == 'Rainbow':
         colorscale = 'Rainbow'
+    elif palette_design == 'Portland':
+        colorscale = [[0, 'rgb(12,51,131)'], [0.25, 'rgb(10,136,186)'], 
+                     [0.5, 'rgb(242,211,56)'], [0.75, 'rgb(242,143,56)'], 
+                     [1, 'rgb(217,30,30)']]
+    elif palette_design == 'Electric':
+        colorscale = [[0, 'rgb(0,0,0)'], [0.2, 'rgb(0,0,255)'], 
+                     [0.4, 'rgb(0,255,255)'], [0.6, 'rgb(0,255,0)'], 
+                     [0.8, 'rgb(255,255,0)'], [1, 'rgb(255,0,0)']]
+    else:  # 'Jet'
+        colorscale = 'Jet'
     
     # Создаем 3D поверхность
     fig = go.Figure(data=[
@@ -965,7 +1190,15 @@ def create_3d_surface(results, colors, palette_design, use_log_pH2O):
             opacity=0.7,  # Прозрачность поверхности
             showscale=True,
             contours={
-                "z": {"show": True, "usecolormap": True, "highlightcolor": "limegreen", "project": {"z": True}}
+                "z": {
+                    "show": True,
+                    "usecolormap": True,
+                    "highlightcolor": "limegreen",
+                    "project": {"z": True},
+                    "size": (np.max(OH_grid) - np.min(OH_grid)) / contour_count if contour_count > 0 else 0.01,
+                    "start": np.min(OH_grid),
+                    "end": np.max(OH_grid)
+                }
             }
         )
     ])
@@ -985,12 +1218,11 @@ def create_3d_surface(results, colors, palette_design, use_log_pH2O):
         name='Experimental data'
     ))
     
-    # Определяем заголовок оси Y в зависимости от шкалы
-    y_axis_title = 'log(pH₂O) (atm)' if use_log_pH2O else 'pH₂O (atm)'
+    scale_suffix = ' (log scale)' if use_log_scale else ' (linear scale)'
     
     fig.update_layout(
         title=dict(
-            text='3D Surface: [OH] = f(T, pH₂O)' + (' (log scale)' if use_log_pH2O else ''),
+            text=f'3D Surface: [OH] = f(T, pH₂O){scale_suffix}',
             font=dict(size=18, family='Times New Roman', color='black', weight='bold')
         ),
         scene=dict(
@@ -1011,11 +1243,11 @@ def create_3d_surface(results, colors, palette_design, use_log_pH2O):
                 linewidth=2,
                 linecolor='black',
                 showgrid=False,
-                type='log' if use_log_pH2O else 'linear',
+                type='log' if use_log_scale else 'linear',
                 tickmode='auto',
-                exponentformat='power' if use_log_pH2O else 'none',
+                exponentformat='power' if use_log_scale else 'none',
                 showexponent='all',
-                nticks=6 if use_log_pH2O else None
+                nticks=6 if use_log_scale else None
             ),
             zaxis=dict(
                 title='[OH]',
@@ -1152,6 +1384,13 @@ with st.sidebar:
                 help=f"Exclude last N points (0-{max_exclusion})"
             )
     
+    # Bayesian fitting option
+    use_bayesian_fitting = st.checkbox(
+        "Enable Bayesian fitting (Method 3)", 
+        value=False,
+        help="Uses PyMC for Bayesian uncertainty estimation (requires PyMC installation)"
+    )
+    
     # Color settings
     st.subheader("Color Settings")
     
@@ -1169,31 +1408,39 @@ with st.sidebar:
         'method2': m2_color
     }
     
-    # Scale and palette settings
-    st.subheader("Visualization Settings")
-    
-    scale_design = st.selectbox(
-        "Residuals scale design:",
-        ["Linear", "Logarithmic", "Symmetric"],
+    # Palette settings for residuals
+    st.subheader("Residuals Palette")
+    residuals_palette = st.selectbox(
+        "Residuals color palette:",
+        ["RdBu_r", "Viridis", "Plasma", "Inferno", "Magma", "Cividis", "Rainbow", "Portland", "Electric", "Jet"],
         index=0,
-        key="scale_design"
+        key="residuals_palette"
     )
+    
+    # Palette settings for 3D surface
+    st.subheader("3D Surface Settings")
     
     palette_design = st.selectbox(
         "3D surface palette:",
-        ["Viridis", "Plasma", "Inferno", "Magma", "Cividis", "Rainbow"],
+        ["Viridis", "Plasma", "Inferno", "Magma", "Cividis", "Rainbow", "Portland", "Electric", "Jet"],
         index=0,
         key="palette_design"
     )
     
-    # Additional options
-    st.subheader("Additional Options")
-    use_log_pH2O = st.checkbox("Logarithmic pH₂O scale in 3D", value=False, key="use_log_pH2O")
+    # Контурные линии для 3D
+    contour_count = st.slider(
+        "Number of contour lines:",
+        min_value=0,
+        max_value=20,
+        value=5,
+        help="Set to 0 to disable contour lines"
+    )
     
     # Comparison Method Options
     st.subheader("Comparison Method Options")
     show_method1_comparison = st.checkbox("Show Method 1 curve", value=True, key="show_method1_comparison")
     show_method2_comparison = st.checkbox("Show Method 2 curve", value=True, key="show_method2_comparison")
+    show_method3_comparison = st.checkbox("Show Method 3 (Bayesian) curve", value=True, key="show_method3_comparison")
     show_experimental_comparison = st.checkbox("Show Experimental data", value=True, key="show_experimental_comparison")
     
     # Reset button
@@ -1217,7 +1464,7 @@ with st.sidebar:
     st.markdown("---")
     st.markdown(f"**Total data points:** {n_total_points}")
     st.markdown(f"**Max exclusions:** {max_exclusion} points")
-    st.markdown("**Version:** 2.3 | **Updated:** 2024")
+    st.markdown("**Version:** 2.4 | **Updated:** 2024")
 
 # Main calculation and display
 if n_total_points > 0:
@@ -1226,7 +1473,7 @@ if n_total_points > 0:
         data_input_text, uploaded_file, pH2O_value, Acc_value,
         exclude_low_T_method1, exclude_high_T_method1,
         exclude_low_T_method2, exclude_high_T_method2,
-        use_log_pH2O, colors, scale_design, palette_design
+        use_bayesian_fitting, colors, contour_count, residuals_palette, palette_design
     )
     
     if results is None:
@@ -1244,8 +1491,9 @@ if n_total_points > 0:
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            st.metric("ΔH°", f"{results['method1']['dH']/1000:.2f} ± {results['method1']['dH_ci']/1000:.1f} kJ/mol",
-                     delta=f"{results['method1']['dH']:.0f} ± {results['method1']['dH_ci']:.0f} J/mol")
+            st.metric("ΔH_hydr°", f"{results['method1']['dH']/1000:.2f} ± {results['method1']['dH_ci']/1000:.1f} kJ/mol",
+                     delta=f"{results['method1']['dH']:.0f} ± {results['method1']['dH_ci']:.0f} J/mol",
+                     help="Hydration enthalpy (negative for exothermic hydration)")
             st.metric("Points analyzed", results['method1']['n_valid'])
         
         with col2:
@@ -1260,7 +1508,7 @@ if n_total_points > 0:
         # METHOD 2 RESULTS
         # ====================================================================
         st.markdown("---")
-        st.header("📊 Method 2: Direct Profile Fitting")
+        st.header("📊 Method 2: Direct Profile Fitting (curve_fit)")
         
         col1, col2, col3 = st.columns(3)
         
@@ -1271,14 +1519,40 @@ if n_total_points > 0:
             st.metric("RMSE", f"{results['method2']['RMSE']:.6f}" if not np.isnan(results['method2']['RMSE']) else "N/A")
         
         with col2:
-            st.metric("ΔH°", f"{results['method2']['dH']/1000:.2f} ± {results['method2']['dH_ci']/1000:.1f} kJ/mol",
-                     delta=f"{results['method2']['dH']:.0f} ± {results['method2']['perr'][0]:.0f} J/mol" if 'perr' in results['method2'] else f"{results['method2']['dH']:.0f} J/mol")
+            st.metric("ΔH_hydr°", f"{results['method2']['dH']/1000:.2f} ± {results['method2']['dH_ci']/1000:.1f} kJ/mol",
+                     delta=f"{results['method2']['dH']:.0f} ± {results['method2']['perr'][0]:.0f} J/mol" if 'perr' in results['method2'] else f"{results['method2']['dH']:.0f} J/mol",
+                     help="Hydration enthalpy (negative for exothermic hydration)")
             st.metric("Points analyzed", results['method2']['n_points'])
         
         with col3:
             st.metric("ΔS°", f"{results['method2']['dS']:.2f} ± {results['method2']['dS_ci']:.1f} J/(mol·K)",
                      delta=f"± {results['method2']['perr'][1]:.2f}" if 'perr' in results['method2'] else "")
             st.metric("SSE", f"{results['method2']['SSE']:.6f}" if not np.isnan(results['method2']['SSE']) else "N/A")
+        
+        # ====================================================================
+        # METHOD 3 RESULTS (Bayesian)
+        # ====================================================================
+        if 'method3' in results and results['method3']['success']:
+            st.markdown("---")
+            st.header("📊 Method 3: Bayesian Fitting")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                color = "green" if results['method3']['R2'] > 0.95 else "orange" if results['method3']['R2'] > 0.9 else "red"
+                st.markdown(f"<h3 style='color:{color}'>{results['method3']['R2']:.4f}</h3>", unsafe_allow_html=True)
+                st.metric("R² coefficient", f"{results['method3']['R2']:.4f}")
+                st.metric("RMSE", f"{results['method3']['RMSE']:.6f}")
+            
+            with col2:
+                st.metric("ΔH_hydr° (95% HDI)", 
+                         f"{results['method3']['dH']/1000:.2f} [{results['method3']['dH_hdi_low']/1000:.2f}, {results['method3']['dH_hdi_high']/1000:.2f}] kJ/mol",
+                         help="Hydration enthalpy with 95% Highest Density Interval (Bayesian credible interval)")
+            
+            with col3:
+                st.metric("ΔS° (95% HDI)", 
+                         f"{results['method3']['dS']:.2f} [{results['method3']['dS_hdi_low']:.2f}, {results['method3']['dS_hdi_high']:.2f}] J/(mol·K)",
+                         help="Entropy with 95% Highest Density Interval (Bayesian credible interval)")
         
         # ====================================================================
         # SUMMARY TABLE
@@ -1288,10 +1562,10 @@ if n_total_points > 0:
         
         summary_data = {
             'Parameter': [
-                'ΔH° (kJ/mol)', 
-                'ΔH 95% CI (kJ/mol)',
+                'ΔH_hydr° (kJ/mol)', 
+                'ΔH 95% CI/HDI (kJ/mol)',
                 'ΔS° (J/(mol·K))',
-                'ΔS 95% CI (J/(mol·K))',
+                'ΔS 95% CI/HDI (J/(mol·K))',
                 'R²',
                 'Points analyzed',
                 'Fitting error'
@@ -1316,6 +1590,18 @@ if n_total_points > 0:
             ]
         }
         
+        # Add Method 3 if available
+        if 'method3' in results and results['method3']['success']:
+            summary_data['Method 3 (Bayesian)'] = [
+                f"{results['method3']['dH']/1000:.1f}",
+                f"[{results['method3']['dH_hdi_low']/1000:.1f}, {results['method3']['dH_hdi_high']/1000:.1f}]",
+                f"{results['method3']['dS']:.1f}",
+                f"[{results['method3']['dS_hdi_low']:.1f}, {results['method3']['dS_hdi_high']:.1f}]",
+                f"{results['method3']['R2']:.4f}",
+                f"{results['method2']['n_points']}",
+                f"RMSE={results['method3']['RMSE']:.6f}"
+            ]
+        
         summary_df = pd.DataFrame(summary_data)
         
         # Style table
@@ -1335,7 +1621,7 @@ if n_total_points > 0:
                 return 'background-color: #f8d7da'
         
         st.dataframe(
-            summary_df.style.applymap(color_r2, subset=['Method 1', 'Method 2']),
+            summary_df.style.applymap(color_r2, subset=['Method 1', 'Method 2', 'Method 3 (Bayesian)'] if 'method3' in results and results['method3']['success'] else ['Method 1', 'Method 2']),
             use_container_width=True
         )
         
@@ -1354,8 +1640,8 @@ if n_total_points > 0:
                     'temperature_unit': 'Celsius'
                 },
                 'method1': {
-                    'dH_kJ_mol': float(results['method1']['dH']/1000),
-                    'dH_CI_kJ_mol': float(results['method1']['dH_ci']/1000),
+                    'dH_hydr_kJ_mol': float(results['method1']['dH']/1000),
+                    'dH_hydr_CI_kJ_mol': float(results['method1']['dH_ci']/1000),
                     'dS_J_molK': float(results['method1']['dS']),
                     'dS_CI_J_molK': float(results['method1']['dS_ci']),
                     'R2': float(results['method1']['r_squared']),
@@ -1364,8 +1650,8 @@ if n_total_points > 0:
                     'excluded_high': results['parameters']['exclude_high_m1']
                 },
                 'method2': {
-                    'dH_kJ_mol': float(results['method2']['dH']/1000),
-                    'dH_CI_kJ_mol': float(results['method2']['dH_ci']/1000),
+                    'dH_hydr_kJ_mol': float(results['method2']['dH']/1000),
+                    'dH_hydr_CI_kJ_mol': float(results['method2']['dH_ci']/1000),
                     'dS_J_molK': float(results['method2']['dS']),
                     'dS_CI_J_molK': float(results['method2']['dS_ci']),
                     'R2': float(results['method2']['R2']),
@@ -1376,10 +1662,26 @@ if n_total_points > 0:
                 },
                 'visualization': {
                     'colors': colors,
-                    'scale_design': scale_design,
+                    'contour_count': contour_count,
+                    'residuals_palette': residuals_palette,
                     'palette_design': palette_design
                 }
             }
+            
+            # Add Method 3 if available
+            if 'method3' in results and results['method3']['success']:
+                export_data['method3'] = {
+                    'dH_hydr_kJ_mol': float(results['method3']['dH']/1000),
+                    'dH_hydr_HDI_low_kJ_mol': float(results['method3']['dH_hdi_low']/1000),
+                    'dH_hydr_HDI_high_kJ_mol': float(results['method3']['dH_hdi_high']/1000),
+                    'dS_J_molK': float(results['method3']['dS']),
+                    'dS_HDI_low_J_molK': float(results['method3']['dS_hdi_low']),
+                    'dS_HDI_high_J_molK': float(results['method3']['dS_hdi_high']),
+                    'R2': float(results['method3']['R2']),
+                    'RMSE': float(results['method3']['RMSE']),
+                    'n_points': int(results['method2']['n_points'])
+                }
+            
             st.markdown(get_json_download_link(export_data, "parameters.json"), unsafe_allow_html=True)
         
         # ====================================================================
@@ -1477,7 +1779,7 @@ if n_total_points > 0:
                     color=colors['method1'], 
                     width=PUBLICATION_STYLE['line_width']
                 ),
-                name=f'Linear fit: R² = {results["method1"]["r_squared"]:.4f}<br>ΔH = {results["method1"]["dH"]/1000:.1f} kJ/mol',
+                name=f'Linear fit: R² = {results["method1"]["r_squared"]:.4f}<br>ΔH_hydr = {results["method1"]["dH"]/1000:.1f} kJ/mol',
                 showlegend=True
             ))
             
@@ -1546,11 +1848,22 @@ if n_total_points > 0:
                 showlegend=True
             ), row=1, col=1)
             
-            # Bottom plot: Residuals с тепловой шкалой
+            # Bottom plot: Residuals с выбранной палитрой
             residuals = results['method2']['residuals']
             if len(residuals) > 0:
                 abs_residuals = np.abs(residuals)
                 max_abs = np.max(abs_residuals) if np.max(abs_residuals) > 0 else 1.0
+                
+                # Настраиваем палитру для остатков
+                residuals_colorscale = residuals_palette
+                if residuals_palette == 'Portland':
+                    residuals_colorscale = [[0, 'rgb(12,51,131)'], [0.25, 'rgb(10,136,186)'], 
+                                          [0.5, 'rgb(242,211,56)'], [0.75, 'rgb(242,143,56)'], 
+                                          [1, 'rgb(217,30,30)']]
+                elif residuals_palette == 'Electric':
+                    residuals_colorscale = [[0, 'rgb(0,0,0)'], [0.2, 'rgb(0,0,255)'], 
+                                          [0.4, 'rgb(0,255,255)'], [0.6, 'rgb(0,255,0)'], 
+                                          [0.8, 'rgb(255,255,0)'], [1, 'rgb(255,0,0)']]
                 
                 # Добавляем остатки с цветом по величине
                 fig3.add_trace(go.Scatter(
@@ -1560,11 +1873,23 @@ if n_total_points > 0:
                     marker=dict(
                         size=PUBLICATION_STYLE['marker_size'] - 2,
                         color=abs_residuals,  # Используем числовые значения
-                        colorscale='RdBu_r',  # Обратная шкала Red-Blue
+                        colorscale=residuals_colorscale,
                         cmin=0,
                         cmax=max_abs,
                         showscale=True,  # Показываем цветовую шкалу
-                        # Убрали colorbar=dict(...) - Plotly автоматически создаст цветовую шкалу
+                        colorbar=dict(
+                            title="|Residual|",
+                            title_font=dict(
+                                family=PUBLICATION_STYLE['font_family'],
+                                size=12,
+                                color='black'
+                            ),
+                            tickfont=dict(
+                                family=PUBLICATION_STYLE['font_family'],
+                                size=10,
+                                color='black'
+                            )
+                        ),
                         symbol='circle',
                         line=dict(width=0.5, color='black')
                     ),
@@ -1597,22 +1922,21 @@ if n_total_points > 0:
             st.plotly_chart(fig3, use_container_width=False)
         
         with col4:
-            st.markdown("#### Residuals Scale")
-            if scale_design == "Linear":
-                st.markdown("**Linear scale**")
-                st.markdown("Residuals shown as-is")
-            elif scale_design == "Logarithmic":
-                st.markdown("**Logarithmic scale**")
-                st.markdown("log(|residuals| + ε)")
-            else:  # Symmetric
-                st.markdown("**Symmetric scale**")
-                st.markdown("± symmetric range")
-            
-            st.markdown("---")
             st.markdown("#### Legend")
             st.markdown(f"<span style='color:{colors['experimental']}'>●</span> Experimental data", unsafe_allow_html=True)
             st.markdown(f"<span style='color:{colors['method1']}'>━━━</span> Method 1", unsafe_allow_html=True)
             st.markdown(f"<span style='color:{colors['method2']}'>━━━</span> Method 2", unsafe_allow_html=True)
+            if 'method3' in results and results['method3']['success']:
+                st.markdown(f"<span style='color:purple'>━━━</span> Method 3 (Bayesian)", unsafe_allow_html=True)
+            
+            st.markdown("---")
+            st.markdown(f"#### Residuals Palette")
+            st.markdown(f"**{residuals_palette}**")
+            
+            # Show palette preview
+            if residuals_palette in ['RdBu_r', 'Viridis', 'Plasma', 'Inferno', 'Magma', 'Cividis', 'Rainbow', 'Jet']:
+                # Built-in palette
+                st.markdown("![Color palette](https://plotly.com/javascript/images/color-scales/plotly_js_$palette.png)".replace("$palette", residuals_palette.lower()), unsafe_allow_html=True)
         
         # 4. Method Comparison
         st.markdown("### Comparison of Methods")
@@ -1639,7 +1963,7 @@ if n_total_points > 0:
                         width=PUBLICATION_STYLE['line_width'],
                         dash='dash'
                     ),
-                    name=f'Method 1: ΔH = {results["method1"]["dH"]/1000:.1f} kJ/mol',
+                    name=f'Method 1: ΔH_hydr = {results["method1"]["dH"]/1000:.1f} kJ/mol',
                     showlegend=True
                 ))
             
@@ -1650,7 +1974,7 @@ if n_total_points > 0:
                 
                 # Определяем легенду в зависимости от видимости Method 1
                 if show_method1_comparison:
-                    legend_name = f'Method 2: ΔH = {results["method2"]["dH"]/1000:.1f} kJ/mol'
+                    legend_name = f'Method 2: ΔH_hydr = {results["method2"]["dH"]/1000:.1f} kJ/mol'
                 else:
                     legend_name = 'Modelled data'
                 
@@ -1663,6 +1987,24 @@ if n_total_points > 0:
                         width=PUBLICATION_STYLE['line_width']
                     ),
                     name=legend_name,
+                    showlegend=True
+                ))
+            
+            # Method 3 curve (только если выбрано в виджете и доступно)
+            if show_method3_comparison and 'method3' in results and results['method3']['success']:
+                OH_fit_m3 = analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, 
+                                                  results['method3']['dH'], results['method3']['dS'])
+                
+                fig4.add_trace(go.Scatter(
+                    x=T_fit,
+                    y=OH_fit_m3,
+                    mode='lines',
+                    line=dict(
+                        color='purple', 
+                        width=PUBLICATION_STYLE['line_width'],
+                        dash='dot'
+                    ),
+                    name=f'Method 3 (Bayesian): ΔH_hydr = {results["method3"]["dH"]/1000:.1f} kJ/mol',
                     showlegend=True
                 ))
             
@@ -1684,7 +2026,7 @@ if n_total_points > 0:
                 ))
             
             # Если ничего не выбрано, показываем сообщение
-            if not (show_method1_comparison or show_method2_comparison or show_experimental_comparison):
+            if not (show_method1_comparison or show_method2_comparison or show_method3_comparison or show_experimental_comparison):
                 fig4.add_annotation(
                     x=0.5,
                     y=0.5,
@@ -1734,6 +2076,22 @@ if n_total_points > 0:
                 showlegend=True
             ))
             
+            # Method 3 if available
+            if 'method3' in results and results['method3']['success']:
+                Kw_m3 = np.exp(-results['method3']['dH']/(R * T_K_fit) + results['method3']['dS']/R)
+                fig5.add_trace(go.Scatter(
+                    x=T_fit,
+                    y=np.log(Kw_m3),
+                    mode='lines',
+                    line=dict(
+                        color='purple', 
+                        width=PUBLICATION_STYLE['line_width'],
+                        dash='dot'
+                    ),
+                    name='Method 3 (Bayesian)',
+                    showlegend=True
+                ))
+            
             # Experimental Kw points
             if len(results['method1']['T_valid']) > 0:
                 fig5.add_trace(go.Scatter(
@@ -1752,11 +2110,21 @@ if n_total_points > 0:
             
             st.plotly_chart(fig5, use_container_width=False)
         
-        # 6. 3D Surface Plot (обязательно генерируется)
-        st.markdown("### 3D Surface Plot")
-        fig6 = create_3d_surface(results, colors, palette_design, use_log_pH2O)
-        if fig6:
-            st.plotly_chart(fig6, use_container_width=True)
+        # 6. 3D Surface Plots (оба варианта)
+        st.markdown("### 3D Surface Plots")
+        col7, col8 = st.columns(2)
+        
+        with col7:
+            st.markdown("#### Linear pH₂O Scale")
+            fig6_linear = create_3d_surface(results, colors, palette_design, contour_count, use_log_scale=False)
+            if fig6_linear:
+                st.plotly_chart(fig6_linear, use_container_width=True)
+        
+        with col8:
+            st.markdown("#### Logarithmic pH₂O Scale")
+            fig6_log = create_3d_surface(results, colors, palette_design, contour_count, use_log_scale=True)
+            if fig6_log:
+                st.plotly_chart(fig6_log, use_container_width=True)
         
         # Create all plots dictionary for ZIP export
         all_plots = {
@@ -1765,7 +2133,8 @@ if n_total_points > 0:
             'method2_fitting_residuals': fig3,
             'method_comparison': fig4,
             'kw_temperature_dependence': fig5,
-            '3d_surface': fig6
+            '3d_surface_linear': fig6_linear,
+            '3d_surface_log': fig6_log
         }
         
         # Create processed data DataFrame
@@ -1774,6 +2143,16 @@ if n_total_points > 0:
             'Temperature_K': results['data']['T_K'],
             'OH_experimental': results['data']['OH_exp']
         })
+        
+        # Add calculated columns if available
+        if len(results['method1']['T_valid']) > 0:
+            temp_df = pd.DataFrame({
+                'Temperature_C_valid': results['method1']['T_valid'] - 273.15,
+                'OH_valid': results['method1']['OH_valid'],
+                'Kw_valid': results['method1']['Kw_valid'],
+                'ln_Kw': np.log(results['method1']['Kw_valid'])
+            })
+            processed_data = pd.concat([processed_data, temp_df], axis=1)
         
         # Create ZIP archive
         st.markdown("### 💾 Download All Results")
@@ -1805,11 +2184,11 @@ if n_total_points > 0:
         if results['method1']['dH'] != 0:
             diff_percent = abs(results['method2']['dH'] - results['method1']['dH']) / abs(results['method1']['dH']) * 100
             if diff_percent > 15:
-                recommendations.append(f"⚠️ Significant ΔH° discrepancy: {diff_percent:.1f}%")
+                recommendations.append(f"⚠️ Significant ΔH_hydr° discrepancy: {diff_percent:.1f}%")
             elif diff_percent > 5:
-                recommendations.append(f"⚠️ Moderate ΔH° discrepancy: {diff_percent:.1f}%")
+                recommendations.append(f"⚠️ Moderate ΔH_hydr° discrepancy: {diff_percent:.1f}%")
             else:
-                recommendations.append("✅ Good consistency in ΔH° between methods")
+                recommendations.append("✅ Good consistency in ΔH_hydr° between methods")
         
         # Display recommendations
         for rec in recommendations:
@@ -1823,17 +2202,20 @@ if n_total_points > 0:
         # Final recommendations
         st.info(f"""
         **For publications:**
-        - Method 1: ΔH° = {results['method1']['dH']/1000:.1f} ± {results['method1']['dH_ci']/1000:.2f} kJ/mol
-        - Method 2: ΔH° = {results['method2']['dH']/1000:.1f} ± {results['method2']['dH_ci']/1000:.2f} kJ/mol
+        - Method 1: ΔH_hydr° = {results['method1']['dH']/1000:.1f} ± {results['method1']['dH_ci']/1000:.2f} kJ/mol
+        - Method 2: ΔH_hydr° = {results['method2']['dH']/1000:.1f} ± {results['method2']['dH_ci']/1000:.2f} kJ/mol
+        {'- Method 3 (Bayesian): ΔH_hydr° = ' + f"{results['method3']['dH']/1000:.1f} [{results['method3']['dH_hdi_low']/1000:.2f}, {results['method3']['dH_hdi_high']/1000:.2f}] kJ/mol" if 'method3' in results and results['method3']['success'] else ''}
         
         **For modeling:**
-        - Recommended: Method 2 (direct fitting)
-        - ΔH° = {results['method2']['dH']/1000:.1f} ± {results['method2']['dH_ci']/1000:.2f} kJ/mol
+        - Recommended: Method 2 (direct fitting) or Method 3 (Bayesian if available)
+        - ΔH_hydr° = {results['method2']['dH']/1000:.1f} ± {results['method2']['dH_ci']/1000:.2f} kJ/mol
         - ΔS° = {results['method2']['dS']:.1f} ± {results['method2']['dS_ci']:.1f} J/(mol·K)
         
-        **Average values:**
-        - ΔH° = {(results['method1']['dH'] + results['method2']['dH'])/2000:.1f} kJ/mol
+        **Average values (Methods 1 & 2):**
+        - ΔH_hydr° = {(results['method1']['dH'] + results['method2']['dH'])/2000:.1f} kJ/mol
         - ΔS° = {(results['method1']['dS'] + results['method2']['dS'])/2:.1f} J/(mol·K)
+        
+        **Note:** ΔH_hydr° represents hydration enthalpy (negative for exothermic hydration).
         """)
 else:
     # Initial information
@@ -1845,11 +2227,12 @@ else:
     3. **Configure fitting**: exclude extreme points if necessary
     4. **Graphs update automatically** when parameters change
     
-    ## 🎯 Key Features
+    ## 🎯 Key Features - Version 2.4
     
     ✅ **Real-time calculation** - no calculate button needed  
     ✅ **Reliable numerical solution** instead of analytical formulas  
     ✅ **Errors and confidence intervals** for all parameters  
+    ✅ **Bayesian fitting option** with credible intervals (requires PyMC)  
     ✅ **File upload** in various formats  
     ✅ **Data validation** with physical correctness check  
     ✅ **Export results** to CSV, JSON  
@@ -1859,9 +2242,13 @@ else:
     ✅ **Rietveld-style combined plots** (fitting + residuals)  
     ✅ **Correct point exclusion logic**  
     ✅ **Customizable colors** for experimental data and models  
-    ✅ **3D surface plot** with adjustable palette  
+    ✅ **3D surface plots** with adjustable palette and contour lines  
+    ✅ **Both linear and logarithmic pH₂O scales** for 3D plots  
     ✅ **Compact graph layout** with proper sizing  
     ✅ **12 ppt axis values, 16 ppt axis labels**  
+    ✅ **Explicit ΔH_hydr° notation** for hydration enthalpy  
+    ✅ **Residuals with customizable color palettes**  
+    ✅ **ZIP export with PNG images** (if kaleido available)  
     
     ## 📊 Data Format
     
@@ -1877,6 +2264,7 @@ else:
     - [OH] concentration: dimensionless (relative)
     - pH₂O: atmospheres (atm)
     - [Acc]: dimensionless (0 < x < 6)
+    - ΔH_hydr°: hydration enthalpy (kJ/mol, negative for exothermic)
     
     **Note:** Experimental data may show constant or slightly increasing [OH] with temperature within measurement error.
     """)
@@ -1884,6 +2272,4 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
-
-
-
+st.markdown("**Note on Bayesian fitting:** Requires PyMC and ArviZ packages. Install with: `pip install pymc arviz`")
