@@ -1358,6 +1358,24 @@ if n_total_points > 0:
                 showlegend=True
             ))
             
+            # Перемещаем легенду в левый верхний угол
+            fig2.update_layout(
+                legend=dict(
+                    font=dict(
+                        family=PUBLICATION_STYLE['font_family'],
+                        size=PUBLICATION_STYLE['legend_font_size'],
+                        color='black'
+                    ),
+                    bordercolor='black',
+                    borderwidth=1,
+                    bgcolor='rgba(255,255,255,0.9)',
+                    x=0.02,  # ИЗМЕНЕНИЕ: Было 0.98, стало 0.02 (слева)
+                    y=0.98,  # Оставляем сверху
+                    xanchor='left',  # ИЗМЕНЕНИЕ: Было 'right', стало 'left'
+                    yanchor='top'
+                )
+            )
+            
             st.plotly_chart(fig2, use_container_width=False)
         
         st.markdown("### Method 2: Profile Fitting with Residuals")
@@ -1719,6 +1737,7 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
 
 
 
