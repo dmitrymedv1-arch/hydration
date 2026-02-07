@@ -27,6 +27,22 @@ st.set_page_config(
     layout="wide"
 )
 
+def check_kaleido_installation():
+    """Check if Kaleido is properly installed"""
+    try:
+        import kaleido
+        # Try to save a simple figure to test
+        test_fig = go.Figure()
+        test_fig.add_trace(go.Scatter(x=[1,2,3], y=[1,2,3]))
+        
+        # Test export
+        img_bytes = pio.to_image(test_fig, format='png', width=100, height=100, engine='kaleido')
+        return True, "Kaleido is working properly"
+    except ImportError:
+        return False, "Kaleido is not installed. Please add 'kaleido==0.2.1' to requirements.txt"
+    except Exception as e:
+        return False, f"Kaleido error: {str(e)}"
+
 # Константы
 R = 8.314  # J/(mol·K)
 
@@ -2269,6 +2285,7 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
 
 
 
