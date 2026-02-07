@@ -3,5 +3,8 @@ numpy
 pandas
 plotly
 scipy
-openpyxl
 kaleido
+pymc
+arviz
+openpyxl
+xlrd
