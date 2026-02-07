@@ -1298,12 +1298,22 @@ if n_total_points > 0:
                 annotation_font=dict(size=12, color='red')
             )
             
-            fig1.add_hline(
-                y=0, 
-                line=dict(color='blue', width=1, dash='dash'),
-                annotation_text='[OH] = 0',
-                annotation_position="bottom right",
-                annotation_font=dict(size=12, color='blue')
+            # Опускаем легенду ниже, чтобы не пересекалась с линией [Acc]
+            fig1.update_layout(
+                legend=dict(
+                    font=dict(
+                        family=PUBLICATION_STYLE['font_family'],
+                        size=PUBLICATION_STYLE['legend_font_size'],
+                        color='black'
+                    ),
+                    bordercolor='black',
+                    borderwidth=1,
+                    bgcolor='rgba(255,255,255,0.9)',
+                    x=0.98,  # Оставляем справа
+                    y=0.88,  # ИЗМЕНЕНИЕ: Было 0.98, стало 0.88 (опускаем ниже)
+                    xanchor='right',
+                    yanchor='top'
+                )
             )
             
             st.plotly_chart(fig1, use_container_width=False)
@@ -1709,6 +1719,7 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
 
 
 
