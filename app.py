@@ -601,6 +601,7 @@ def get_json_download_link(data, filename="parameters.json"):
     href = f'<a href="data:application/json;base64,{b64}" download="{filename}">📥 Download JSON</a>'
     return href
 
+# Полная замена функции create_download_zip с обработкой ошибок
 def create_download_zip(plots_dict, results_df, results_json, results):
     """Create ZIP archive with all plots and data"""
     zip_buffer = io.BytesIO()
@@ -608,8 +609,18 @@ def create_download_zip(plots_dict, results_df, results_json, results):
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
         # Save plots as PNG with high resolution
         for name, fig in plots_dict.items():
-            # Convert Plotly figure to image with high DPI
-            img_bytes = fig.to_image(format='png', width=2400, height=1800, scale=2, engine='kaleido')
+            try:
+                # Try with kaleido engine
+                img_bytes = fig.to_image(format='png', width=2400, height=1800, scale=2, engine='kaleido')
+            except (RuntimeError, ImportError, ValueError) as e:
+                # Fallback to default engine if kaleido fails
+                try:
+                    img_bytes = fig.to_image(format='png', width=2400, height=1800, scale=2)
+                except Exception as e2:
+                    # Last resort: smaller image
+                    st.warning(f"Could not save high-res image for {name}: {e2}")
+                    img_bytes = fig.to_image(format='png', width=1200, height=900)
+            
             zip_file.writestr(f'plots/{name}.png', img_bytes)
         
         # Save processed data
@@ -1870,4 +1881,5 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
 
