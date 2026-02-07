@@ -13,7 +13,6 @@ import base64
 import plotly.express as px
 import io
 import zipfile
-from PIL import Image
 import plotly.io as pio
 warnings.filterwarnings('ignore')
 
@@ -602,618 +601,110 @@ def get_json_download_link(data, filename="parameters.json"):
     href = f'<a href="data:application/json;base64,{b64}" download="{filename}">📥 Download JSON</a>'
     return href
 
-def save_plotly_figure_high_res(fig, width_cm=19, height_cm=None, dpi=600):
-    """
-    Сохраняет Plotly рисунок в высоком разрешении.
+def create_download_zip(plots_dict, results_df, results_json, results):
+    """Create ZIP archive with all plots and data"""
+    zip_buffer = io.BytesIO()
     
-    Parameters:
-    -----------
-    fig : plotly.graph_objects.Figure
-        Рисунок для сохранения
-    width_cm : float
-        Ширина в сантиметрах (по умолчанию 19 см ~ 7.5 дюймов)
-    height_cm : float
-        Высота в сантиметрах (если None, вычисляется по соотношению 3:4)
-    dpi : int
-        Разрешение точек на дюйм (по умолчанию 600)
-    
-    Returns:
-    --------
-    bytes
-        Изображение в формате PNG
-    """
-    if height_cm is None:
-        # Соотношение 3:4 для публикаций
-        height_cm = width_cm * 4/3
-    
-    # Конвертируем см в пиксели
-    width_px = int(width_cm * dpi / 2.54)
-    height_px = int(height_cm * dpi / 2.54)
-    
-    # Устанавливаем размеры для сохранения
-    fig.update_layout(
-        width=width_px,
-        height=height_px
-    )
-    
-    # Сохраняем в буфер
-    img_bytes = pio.to_image(
-        fig, 
-        format='png', 
-        width=width_px, 
-        height=height_px,
-        scale=1  # Не масштабируем, используем точные размеры
-    )
-    
-    return img_bytes
-
-def create_all_plots_high_res(results, colors, palette_design, use_log_pH2O, 
-                             show_method1_comparison, show_method2_comparison, 
-                             show_experimental_comparison, pH2O_value, Acc_value):
-    """
-    Создает все графики в высоком разрешении.
-    
-    Returns:
-    --------
-    dict
-        Словарь с именами файлов и данными изображений
-    """
-    plots = {}
-    
-    # 1. Экспериментальные данные
-    fig1 = create_publication_figure(
-        "Experimental Data",
-        "Temperature (°C)",
-        "[OH]"
-    )
-    
-    fig1.add_trace(go.Scatter(
-        x=results['data']['T_C'],
-        y=results['data']['OH_exp'],
-        mode='markers',
-        marker=dict(
-            size=10,  # Увеличиваем для высокого разрешения
-            color=colors['experimental'],
-            symbol='circle',
-            line=dict(width=1.5, color='black')
-        ),
-        name='Experimental data'
-    ))
-    
-    fig1.add_hline(
-        y=Acc_value, 
-        line=dict(color='red', width=2, dash='dash'),
-        annotation_text=f'[Acc] = {Acc_value:.3f}',
-        annotation_position="top right",
-        annotation_font=dict(size=14, color='red')
-    )
-    
-    plots['01_experimental_data'] = save_plotly_figure_high_res(fig1, dpi=600)
-    
-    # 2. Метод 1: ln(Kw) vs 1000/T
-    fig2 = create_publication_figure(
-        "Method 1: ln(Kw) vs 1000/T",
-        "1000/T (K⁻¹)",
-        "ln(Kw)"
-    )
-    
-    fig2.add_trace(go.Scatter(
-        x=results['method1']['x_m1'],
-        y=results['method1']['ln_Kw'],
-        mode='markers',
-        marker=dict(
-            size=10,
-            color=colors['experimental'],
-            symbol='circle',
-            line=dict(width=1.5, color='black')
-        ),
-        name='Data points'
-    ))
-    
-    # Линия регрессии
-    x_min = min(results['method1']['x_m1'])
-    x_max = max(results['method1']['x_m1'])
-    x_fit = np.linspace(x_min, x_max, 100)
-    y_fit = results['method1']['slope'] * x_fit + results['method1']['intercept']
-    
-    fig2.add_trace(go.Scatter(
-        x=x_fit,
-        y=y_fit,
-        mode='lines',
-        line=dict(color=colors['method1'], width=3),
-        name=f'Linear fit: R² = {results["method1"]["r_squared"]:.4f}\nΔH = {results["method1"]["dH"]/1000:.1f} kJ/mol'
-    ))
-    
-    plots['02_method1_regression'] = save_plotly_figure_high_res(fig2, dpi=600)
-    
-    # 3. Метод 2: Подгонка профиля с остатками
-    fig3 = create_combined_fitting_figure(
-        "Method 2: Profile Fitting with Residuals",
-        "Temperature (°C)",
-        "[OH]",
-        "[OH]<sub>exp</sub> - [OH]<sub>model</sub>"
-    )
-    
-    # Верхний график
-    T_fit = np.linspace(min(results['data']['T_C']), max(results['data']['T_C']), 200)
-    T_K_fit = T_fit + 273.15
-    OH_fit = analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, 
-                                    results['method2']['dH'], results['method2']['dS'])
-    
-    fig3.add_trace(go.Scatter(
-        x=T_fit,
-        y=OH_fit,
-        mode='lines',
-        line=dict(color=colors['method2'], width=3),
-        name=f'Model fit: R² = {results["method2"]["R2"]:.4f}'
-    ), row=1, col=1)
-    
-    fig3.add_trace(go.Scatter(
-        x=results['method2']['T_C'],
-        y=results['method2']['OH_exp'],
-        mode='markers',
-        marker=dict(
-            size=10,
-            color=colors['experimental'],
-            symbol='circle',
-            line=dict(width=1.5, color='black')
-        ),
-        name='Experimental data'
-    ), row=1, col=1)
-    
-    # Нижний график: остатки
-    residuals = results['method2']['residuals']
-    if len(residuals) > 0:
-        abs_residuals = np.abs(residuals)
-        max_abs = np.max(abs_residuals) if np.max(abs_residuals) > 0 else 1.0
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        # Save plots as PNG with high resolution
+        for name, fig in plots_dict.items():
+            # Convert Plotly figure to image with high DPI
+            img_bytes = pio.to_image(fig, format='png', width=2400, height=1800, scale=2)
+            zip_file.writestr(f'plots/{name}.png', img_bytes)
         
-        fig3.add_trace(go.Scatter(
-            x=results['method2']['T_C'],
-            y=results['method2']['residuals'],
-            mode='markers',
-            marker=dict(
-                size=8,
-                color=abs_residuals,
-                colorscale='RdBu_r',
-                cmin=0,
-                cmax=max_abs,
-                showscale=True,
-                colorbar=dict(
-                    title="|Residual|",
-                    titleside="right",
-                    thickness=15,
-                    len=0.5,
-                    y=0.75,
-                    yanchor="middle"
-                ),
-                symbol='circle',
-                line=dict(width=1, color='black')
-            ),
-            name='Residuals',
-            showlegend=False
-        ), row=2, col=1)
-    
-    fig3.add_hline(y=0, line=dict(color='black', width=2), row=2, col=1)
-    
-    plots['03_method2_fitting_residuals'] = save_plotly_figure_high_res(
-        fig3, width_cm=19, height_cm=19*1.4, dpi=600
-    )
-    
-    # 4. Сравнение методов
-    fig4 = create_publication_figure(
-        "Comparison of Methods",
-        "Temperature (°C)",
-        "[OH]"
-    )
-    
-    if show_method1_comparison:
-        OH_fit_m1 = analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, 
-                                          results['method1']['dH'], results['method1']['dS'])
+        # Save processed data
+        if results_df is not None:
+            csv_buffer = io.StringIO()
+            results_df.to_csv(csv_buffer, index=False)
+            zip_file.writestr('processed_data.csv', csv_buffer.getvalue())
         
-        fig4.add_trace(go.Scatter(
-            x=T_fit,
-            y=OH_fit_m1,
-            mode='lines',
-            line=dict(color=colors['method1'], width=3, dash='dash'),
-            name=f'Method 1: ΔH = {results["method1"]["dH"]/1000:.1f} kJ/mol'
-        ))
-    
-    if show_method2_comparison:
-        OH_fit_m2 = analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, 
-                                          results['method2']['dH'], results['method2']['dS'])
+        # Save parameters
+        if results_json is not None:
+            json_buffer = io.StringIO()
+            json.dump(results_json, json_buffer, indent=2, ensure_ascii=False)
+            zip_file.writestr('parameters.json', json_buffer.getvalue())
         
-        if show_method1_comparison:
-            legend_name = f'Method 2: ΔH = {results["method2"]["dH"]/1000:.1f} kJ/mol'
-        else:
-            legend_name = 'Modelled data'
-        
-        fig4.add_trace(go.Scatter(
-            x=T_fit,
-            y=OH_fit_m2,
-            mode='lines',
-            line=dict(color=colors['method2'], width=3),
-            name=legend_name
-        ))
-    
-    if show_experimental_comparison:
-        fig4.add_trace(go.Scatter(
-            x=results['data']['T_C'],
-            y=results['data']['OH_exp'],
-            mode='markers',
-            marker=dict(
-                size=8,
-                color=colors['experimental'],
-                symbol='circle',
-                opacity=0.8,
-                line=dict(width=1, color='black')
-            ),
-            name='Experimental data'
-        ))
-    
-    plots['04_methods_comparison'] = save_plotly_figure_high_res(fig4, dpi=600)
-    
-    # 5. Температурная зависимость Kw
-    fig5 = create_publication_figure(
-        "Temperature Dependence of Kw",
-        "Temperature (°C)",
-        "ln(Kw)"
-    )
-    
-    Kw_m1 = np.exp(-results['method1']['dH']/(R * T_K_fit) + results['method1']['dS']/R)
-    Kw_m2 = np.exp(-results['method2']['dH']/(R * T_K_fit) + results['method2']['dS']/R)
-    
-    fig5.add_trace(go.Scatter(
-        x=T_fit,
-        y=np.log(Kw_m1),
-        mode='lines',
-        line=dict(color=colors['method1'], width=3, dash='dash'),
-        name='Method 1'
-    ))
-    
-    fig5.add_trace(go.Scatter(
-        x=T_fit,
-        y=np.log(Kw_m2),
-        mode='lines',
-        line=dict(color=colors['method2'], width=3),
-        name='Method 2'
-    ))
-    
-    if len(results['method1']['T_valid']) > 0:
-        fig5.add_trace(go.Scatter(
-            x=results['method1']['T_valid'] - 273.15,
-            y=np.log(results['method1']['Kw_valid']),
-            mode='markers',
-            marker=dict(
-                size=8,
-                color=colors['experimental'],
-                symbol='circle',
-                line=dict(width=1, color='black')
-            ),
-            name='Experimental (Method 1)'
-        ))
-    
-    plots['05_kw_temperature_dependence'] = save_plotly_figure_high_res(fig5, dpi=600)
-    
-    # 6. 3D поверхность
-    fig6 = create_3d_surface(results, colors, palette_design, use_log_pH2O)
-    if fig6:
-        # Для 3D графика используем специальные настройки
-        fig6.update_layout(
-            width=800,
-            height=800
-        )
-        plots['06_3d_surface'] = pio.to_image(
-            fig6, 
-            format='png', 
-            width=1200,  # Большая ширина для 3D
-            height=1200,
-            scale=2  # Удваиваем масштаб для детализации
-        )
-    
-    return plots
+        # Save summary report
+        if results is not None:
+            report = f"""THERMODYNAMIC ANALYSIS RESULTS
+========================================
 
-def create_summary_report(results, parameters):
-    """
-    Создает текстовый отчет с результатами.
-    """
-    report = f"""HYDRATION THERMODYNAMICS ANALYSIS REPORT
-==================================================
-Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+Analysis performed: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
-EXPERIMENTAL PARAMETERS
------------------------
-pH₂O: {parameters['pH2O']:.5f} atm
-[Acc]: {parameters['Acc']:.3f}
-Total data points: {results['data']['n_points']}
+SYSTEM PARAMETERS:
+------------------
+pH₂O = {results['parameters']['pH2O']:.5f} atm
+[Acc] = {results['parameters']['Acc']:.3f}
 
-METHOD 1: EQUILIBRIUM CONSTANT ANALYSIS
-----------------------------------------
+METHOD 1 - EQUILIBRIUM CONSTANT ANALYSIS:
+-----------------------------------------
 ΔH° = {results['method1']['dH']/1000:.2f} ± {results['method1']['dH_ci']/1000:.2f} kJ/mol
 ΔS° = {results['method1']['dS']:.2f} ± {results['method1']['dS_ci']:.2f} J/(mol·K)
 R² = {results['method1']['r_squared']:.4f}
-Standard error: {results['method1']['std_err']:.4f}
-p-value: {results['method1']['p_value']:.2e}
-Valid points analyzed: {results['method1']['n_valid']}
-Excluded points (low T): {parameters['exclude_low_m1']}
-Excluded points (high T): {parameters['exclude_high_m1']}
+Points analyzed: {results['method1']['n_valid']}
+Excluded points (low/high): {results['parameters']['exclude_low_m1']}/{results['parameters']['exclude_high_m1']}
 
-METHOD 2: DIRECT PROFILE FITTING
----------------------------------
+METHOD 2 - DIRECT FITTING:
+--------------------------
 ΔH° = {results['method2']['dH']/1000:.2f} ± {results['method2']['dH_ci']/1000:.2f} kJ/mol
 ΔS° = {results['method2']['dS']:.2f} ± {results['method2']['dS_ci']:.2f} J/(mol·K)
 R² = {results['method2']['R2']:.4f}
 RMSE = {results['method2']['RMSE']:.6f}
-SSE = {results['method2']['SSE']:.6f}
 Points analyzed: {results['method2']['n_points']}
-Excluded points (low T): {parameters['exclude_low_m2']}
-Excluded points (high T): {parameters['exclude_high_m2']}
+Excluded points (low/high): {results['parameters']['exclude_low_m2']}/{results['parameters']['exclude_high_m2']}
 
-SUMMARY
--------
-Average ΔH°: {(results['method1']['dH'] + results['method2']['dH'])/2000:.2f} kJ/mol
-Average ΔS°: {(results['method1']['dS'] + results['method2']['dS'])/2:.2f} J/(mol·K)
-ΔH discrepancy: {abs(results['method2']['dH'] - results['method1']['dH']) / abs(results['method1']['dH']) * 100:.1f}%
-
-RECOMMENDATIONS
----------------
-"""
-    
-    # Добавляем рекомендации
-    r2_m1 = results['method1']['r_squared']
-    r2_m2 = results['method2']['R2']
-    
-    if r2_m1 > 0.98 and r2_m2 > 0.98:
-        report += "- Excellent agreement of both methods with data\n"
-    elif r2_m1 > 0.95 and r2_m2 > 0.95:
-        report += "- Good agreement of methods with data\n"
-    elif r2_m1 < 0.9 or r2_m2 < 0.9:
-        report += "- Consider excluding more points or checking data quality\n"
-    
-    if results['method1']['dH'] != 0:
-        diff_percent = abs(results['method2']['dH'] - results['method1']['dH']) / abs(results['method1']['dH']) * 100
-        if diff_percent > 15:
-            report += f"- Significant ΔH° discrepancy: {diff_percent:.1f}%\n"
-        elif diff_percent > 5:
-            report += f"- Moderate ΔH° discrepancy: {diff_percent:.1f}%\n"
-        else:
-            report += "- Good consistency in ΔH° between methods\n"
-    
-    report += f"""
-VISUALIZATION SETTINGS
-----------------------
-Color scheme: Experimental={parameters['colors']['experimental']}, 
-               Method1={parameters['colors']['method1']}, 
-               Method2={parameters['colors']['method2']}
-Residuals scale: {parameters['scale_design']}
-3D palette: {parameters['palette_design']}
-Logarithmic pH₂O in 3D: {'Yes' if parameters['use_log_pH2O'] else 'No'}
-
-ARCHIVE CONTENTS
+RECOMMENDATIONS:
 ----------------
-1. 01_experimental_data.png - Experimental [OH] vs Temperature
-2. 02_method1_regression.png - Method 1: ln(Kw) vs 1000/T
-3. 03_method2_fitting_residuals.png - Method 2: Fitting with residuals
-4. 04_methods_comparison.png - Comparison of both methods
-5. 05_kw_temperature_dependence.png - Temperature dependence of Kw
-6. 06_3d_surface.png - 3D surface: [OH] = f(T, pH₂O)
-7. summary_report.txt - This report
-8. processed_data.csv - Processed experimental data
-9. results_summary.csv - Summary table of results
-10. parameters.json - Analysis parameters
-11. README.txt - Archive information
+{('Average ΔH° = ' + f'{(results["method1"]["dH"] + results["method2"]["dH"])/2000:.1f} kJ/mol' if results else '')}
+{('Average ΔS° = ' + f'{(results["method1"]["dS"] + results["method2"]["dS"])/2:.1f} J/(mol·K)' if results else '')}
 
-All figures are saved at 600 DPI in publication-ready format.
-Figure dimensions: 19 cm width, 25.3 cm height (3:4 aspect ratio).
-Fonts: Times New Roman, axis labels 16 pt, tick labels 12 pt.
+Archive Contents:
+1. plots/ - directory with high-resolution figures (600 DPI equivalent)
+2. processed_data.csv - processed data with calculated columns
+3. parameters.json - all analysis parameters in JSON format
+
+Plots included:
+1. experimental_data.png - Experimental data with [Acc] limit
+2. method1_lnkw_vs_1000t.png - Method 1: ln(Kw) vs 1000/T
+3. method2_fitting_residuals.png - Method 2: Profile fitting with residuals
+4. method_comparison.png - Comparison of Method 1 and Method 2 curves
+5. kw_temperature_dependence.png - Temperature dependence of Kw
+6. 3d_surface.png - 3D surface plot of [OH] = f(T, pH₂O)
+
+All plots are in publication style with:
+- Times New Roman font family
+- Black axes and ticks
+- White background
+- Appropriate font sizes (16 ppt axis titles, 12 ppt tick labels)
+- High resolution for publication (600 DPI equivalent)
 """
-    
-    return report
-
-def create_data_summary_csv(results):
-    """
-    Создает CSV файл с обработанными данными.
-    """
-    # Основные данные
-    data_df = pd.DataFrame({
-        'Temperature_C': results['data']['T_C'],
-        'Temperature_K': results['data']['T_K'],
-        'OH_experimental': results['data']['OH_exp']
-    })
-    
-    # Данные метода 1
-    if len(results['method1']['T_C']) > 0:
-        method1_df = pd.DataFrame({
-            'T_C_method1': results['method1']['T_C'],
-            'OH_method1': results['method1']['OH_exp'],
-            'ln_Kw': results['method1']['ln_Kw'],
-            '1000_over_T': results['method1']['x_m1']
-        })
-        data_df = pd.concat([data_df, method1_df], axis=1)
-    
-    # Данные метода 2
-    if len(results['method2']['T_C']) > 0:
-        method2_df = pd.DataFrame({
-            'T_C_method2': results['method2']['T_C'],
-            'OH_method2': results['method2']['OH_exp'],
-            'OH_model_method2': results['method2']['OH_model'],
-            'Residuals_method2': results['method2']['residuals']
-        })
-        data_df = pd.concat([data_df, method2_df], axis=1)
-    
-    return data_df
-
-def create_results_summary_csv(results):
-    """
-    Создает CSV файл с итоговыми результатами.
-    """
-    summary_data = {
-        'Parameter': [
-            'ΔH° (kJ/mol)', 
-            'ΔH 95% CI (kJ/mol)',
-            'ΔS° (J/(mol·K))',
-            'ΔS 95% CI (J/(mol·K))',
-            'R²',
-            'Points analyzed',
-            'Fitting error'
-        ],
-        'Method 1': [
-            f"{results['method1']['dH']/1000:.3f}",
-            f"±{results['method1']['dH_ci']/1000:.3f}",
-            f"{results['method1']['dS']:.3f}",
-            f"±{results['method1']['dS_ci']:.3f}",
-            f"{results['method1']['r_squared']:.6f}",
-            f"{results['method1']['n_valid']}",
-            f"std_err={results['method1']['std_err']:.6f}"
-        ],
-        'Method 2': [
-            f"{results['method2']['dH']/1000:.3f}",
-            f"±{results['method2']['dH_ci']/1000:.3f}",
-            f"{results['method2']['dS']:.3f}",
-            f"±{results['method2']['dS_ci']:.3f}",
-            f"{results['method2']['R2']:.6f}",
-            f"{results['method2']['n_points']}",
-            f"RMSE={results['method2']['RMSE']:.8f}" if not np.isnan(results['method2']['RMSE']) else "N/A"
-        ]
-    }
-    
-    return pd.DataFrame(summary_data)
-
-def create_download_zip(results, colors, palette_design, use_log_pH2O,
-                       show_method1_comparison, show_method2_comparison, 
-                       show_experimental_comparison, pH2O_value, Acc_value):
-    """
-    Создает ZIP архив со всеми графиками и данными.
-    
-    Returns:
-    --------
-    bytes
-        ZIP архив в виде байтов
-    """
-    zip_buffer = io.BytesIO()
-    
-    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-        # Создаем все графики в высоком разрешении
-        plots = create_all_plots_high_res(
-            results, colors, palette_design, use_log_pH2O,
-            show_method1_comparison, show_method2_comparison,
-            show_experimental_comparison, pH2O_value, Acc_value
-        )
+            zip_file.writestr('analysis_report.txt', report)
         
-        # Сохраняем графики
-        for name, plot_data in plots.items():
-            zip_file.writestr(f'plots/{name}.png', plot_data)
-        
-        # Создаем и сохраняем текстовый отчет
-        parameters = {
-            'pH2O': pH2O_value,
-            'Acc': Acc_value,
-            'colors': colors,
-            'scale_design': scale_design,
-            'palette_design': palette_design,
-            'use_log_pH2O': use_log_pH2O,
-            'exclude_low_m1': exclude_low_T_method1,
-            'exclude_high_m1': exclude_high_T_method1,
-            'exclude_low_m2': exclude_low_T_method2,
-            'exclude_high_m2': exclude_high_T_method2
-        }
-        
-        report = create_summary_report(results, parameters)
-        zip_file.writestr('summary_report.txt', report)
-        
-        # Сохраняем обработанные данные
-        data_df = create_data_summary_csv(results)
-        csv_buffer = io.StringIO()
-        data_df.to_csv(csv_buffer, index=False)
-        zip_file.writestr('processed_data.csv', csv_buffer.getvalue())
-        
-        # Сохраняем сводку результатов
-        results_df = create_results_summary_csv(results)
-        results_csv_buffer = io.StringIO()
-        results_df.to_csv(results_csv_buffer, index=False)
-        zip_file.writestr('results_summary.csv', results_csv_buffer.getvalue())
-        
-        # Сохраняем параметры в JSON
-        params_dict = {
-            'analysis_parameters': parameters,
-            'method1_results': {
-                'dH_kJ_mol': float(results['method1']['dH']/1000),
-                'dH_CI_kJ_mol': float(results['method1']['dH_ci']/1000),
-                'dS_J_molK': float(results['method1']['dS']),
-                'dS_CI_J_molK': float(results['method1']['dS_ci']),
-                'R2': float(results['method1']['r_squared']),
-                'n_points': int(results['method1']['n_valid'])
-            },
-            'method2_results': {
-                'dH_kJ_mol': float(results['method2']['dH']/1000),
-                'dH_CI_kJ_mol': float(results['method2']['dH_ci']/1000),
-                'dS_J_molK': float(results['method2']['dS']),
-                'dS_CI_J_molK': float(results['method2']['dS_ci']),
-                'R2': float(results['method2']['R2']),
-                'RMSE': float(results['method2']['RMSE']) if not np.isnan(results['method2']['RMSE']) else None
-            },
-            'timestamp': datetime.now().isoformat()
-        }
-        
-        params_json = json.dumps(params_dict, indent=2, ensure_ascii=False)
-        zip_file.writestr('parameters.json', params_json)
-        
-        # README файл
-        readme = """HYDRATION THERMODYNAMICS ANALYSIS - RESULTS ARCHIVE
-================================================================
+        # Save README
+        readme = """HYDRATION THERMODYNAMICS ANALYSIS - RESULTS
+=======================================================
 
-ARCHIVE CONTENTS
-----------------
-1. plots/ - Directory containing all high-resolution figures:
-   01_experimental_data.png - Experimental [OH] vs Temperature
-   02_method1_regression.png - Method 1: ln(Kw) vs 1000/T
-   03_method2_fitting_residuals.png - Method 2: Fitting with residuals
-   04_methods_comparison.png - Comparison of both methods
-   05_kw_temperature_dependence.png - Temperature dependence of Kw
-   06_3d_surface.png - 3D surface: [OH] = f(T, pH₂O)
+This archive contains all results from the thermodynamic analysis of AB₁₋ₓAccₓO₃₋ₓ/₂ based on proton concentration temperature profile.
 
-2. summary_report.txt - Detailed text report with analysis results
+Files included:
+1. plots/ - High-resolution publication-ready figures
+2. processed_data.csv - Processed experimental data with calculated values
+3. parameters.json - All analysis parameters in machine-readable format
+4. analysis_report.txt - Text summary of results and recommendations
 
-3. processed_data.csv - Processed experimental data with calculated values
+All plots are saved as PNG with high resolution (equivalent to 600 DPI) suitable for scientific publications.
 
-4. results_summary.csv - Summary table of thermodynamic parameters
-
-5. parameters.json - Complete analysis parameters in JSON format
-
-FIGURE SPECIFICATIONS
----------------------
-- Resolution: 600 DPI (print quality)
-- Dimensions: 19 cm width × 25.3 cm height (3:4 aspect ratio)
-- Font: Times New Roman
-- Axis labels: 16 pt (bold)
-- Tick labels: 12 pt
-- Background: White with black borders
-- Color scheme: Consistent with application settings
-
-RECOMMENDED USE
----------------
-- For publications: Use figures directly from plots/ directory
-- For presentations: Figures can be resized without quality loss
-- For archiving: Keep entire ZIP archive for reproducibility
-
-GENERATION DETAILS
-------------------
-Generated with Hydration Thermodynamics Analysis Tool
-Version: 2.3 | Date: {date}
-
-Contact: [Your contact information]
-""".format(date=datetime.now().strftime('%Y-%m-%d'))
-        
+For questions or additional analysis, please refer to the original application.
+"""
         zip_file.writestr('README.txt', readme)
     
     zip_buffer.seek(0)
     return zip_buffer
 
-def get_zip_download_link(zip_buffer, filename="thermodynamics_analysis.zip"):
-    """
-    Генерирует ссылку для скачивания ZIP архива.
-    """
+def get_zip_download_link(zip_buffer, filename="thermodynamics_results.zip"):
+    """Generate download link for ZIP archive"""
     b64 = base64.b64encode(zip_buffer.getvalue()).decode()
-    href = f'<a href="data:application/zip;base64,{b64}" download="{filename}">📦 Download All Results (ZIP, 600 DPI)</a>'
+    href = f'<a href="data:application/zip;base64,{b64}" download="{filename}">📦 Download All Plots and Data (ZIP)</a>'
     return href
 
 # ============================================================================
@@ -1836,7 +1327,7 @@ if n_total_points > 0:
         
         # Export
         st.markdown("### 📤 Export Results")
-        col_exp1, col_exp2 = st.columns(2)
+        col_exp1, col_exp2, col_exp3 = st.columns(3)
         
         with col_exp1:
             st.markdown(get_table_download_link(summary_df, "thermo_results.csv"), unsafe_allow_html=True)
@@ -2253,6 +1744,30 @@ if n_total_points > 0:
         if fig6:
             st.plotly_chart(fig6, use_container_width=True)
         
+        # Create all plots dictionary for ZIP export
+        all_plots = {
+            'experimental_data': fig1,
+            'method1_lnkw_vs_1000t': fig2,
+            'method2_fitting_residuals': fig3,
+            'method_comparison': fig4,
+            'kw_temperature_dependence': fig5,
+            '3d_surface': fig6
+        }
+        
+        # Create processed data DataFrame
+        processed_data = pd.DataFrame({
+            'Temperature_C': results['data']['T_C'],
+            'Temperature_K': results['data']['T_K'],
+            'OH_experimental': results['data']['OH_exp']
+        })
+        
+        # Create ZIP archive
+        st.markdown("### 💾 Download All Results")
+        zip_buffer = create_download_zip(all_plots, processed_data, export_data, results)
+        
+        with col_exp3:
+            st.markdown(get_zip_download_link(zip_buffer), unsafe_allow_html=True)
+        
         # ====================================================================
         # COMMENTS AND RECOMMENDATIONS
         # ====================================================================
@@ -2355,6 +1870,3 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
-
-
-
