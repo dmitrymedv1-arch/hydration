@@ -935,43 +935,89 @@ def create_3d_surface(results, colors, palette_design, use_log_pH2O):
 def save_high_res_figure(fig, filename, title="", include_title=True):
     """Save figure in high resolution 600 DPI"""
     try:
-        # Создаем временный файл
-        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
-            temp_path = tmp_file.name
+        # Временно сохраняем настройки
+        original_width = fig.layout.width
+        original_height = fig.layout.height
+        original_font_size = fig.layout.font.size if hasattr(fig.layout.font, 'size') else PUBLICATION_STYLE['font_size']
         
         # Настройки сохранения
         if include_title and title:
             fig.update_layout(title=dict(text=title))
         
         # Увеличиваем размеры для высокого разрешения
+        scale_factor = HIGH_RES_SETTINGS['scale']
+        
+        # Масштабируем шрифты
         fig.update_layout(
             width=HIGH_RES_SETTINGS['width'],
             height=HIGH_RES_SETTINGS['height'],
-            font=dict(size=HIGH_RES_SETTINGS['scale'] * 2)  # Увеличиваем шрифт пропорционально
+            font=dict(
+                size=original_font_size * scale_factor,
+                family=PUBLICATION_STYLE['font_family']
+            ),
+            title_font=dict(
+                size=PUBLICATION_STYLE['title_font_size'] * scale_factor,
+                family=PUBLICATION_STYLE['font_family'],
+                weight='bold'
+            ),
+            xaxis=dict(
+                title_font=dict(
+                    size=PUBLICATION_STYLE['axis_title_font_size'] * scale_factor,
+                    family=PUBLICATION_STYLE['font_family'],
+                    weight='bold'
+                ),
+                tickfont=dict(
+                    size=PUBLICATION_STYLE['tick_font_size'] * scale_factor,
+                    family=PUBLICATION_STYLE['font_family']
+                )
+            ),
+            yaxis=dict(
+                title_font=dict(
+                    size=PUBLICATION_STYLE['axis_title_font_size'] * scale_factor,
+                    family=PUBLICATION_STYLE['font_family'],
+                    weight='bold'
+                ),
+                tickfont=dict(
+                    size=PUBLICATION_STYLE['tick_font_size'] * scale_factor,
+                    family=PUBLICATION_STYLE['font_family']
+                )
+            )
         )
         
-        # Сохраняем с высоким разрешением
-        pio.write_image(
+        # Создаем байты изображения
+        img_bytes = pio.to_image(
             fig,
-            temp_path,
             format=HIGH_RES_SETTINGS['format'],
             width=HIGH_RES_SETTINGS['width'],
             height=HIGH_RES_SETTINGS['height'],
-            scale=HIGH_RES_SETTINGS['scale']
+            scale=scale_factor,
+            engine='kaleido'
         )
         
-        # Читаем и возвращаем байты
-        with open(temp_path, 'rb') as f:
-            img_bytes = f.read()
-        
-        # Удаляем временный файл
-        os.unlink(temp_path)
+        # Восстанавливаем оригинальные настройки
+        fig.update_layout(
+            width=original_width,
+            height=original_height,
+            font=dict(size=original_font_size)
+        )
         
         return img_bytes, filename
     
     except Exception as e:
         st.error(f"Error saving figure: {e}")
-        return None, None
+        # Fallback: используем lower resolution
+        try:
+            img_bytes = pio.to_image(
+                fig,
+                format='png',
+                width=1200,
+                height=1600,
+                scale=2
+            )
+            return img_bytes, filename.replace('.png', '_lower_res.png')
+        except Exception as e2:
+            st.error(f"Fallback also failed: {e2}")
+            return None, None
 
 def save_all_figures_to_zip(results, colors, palette_design, use_log_pH2O,
                            show_method1_comparison, show_method2_comparison, 
@@ -2217,6 +2263,7 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
 
 
 
