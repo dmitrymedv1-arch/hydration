@@ -1310,7 +1310,7 @@ if n_total_points > 0:
                     borderwidth=1,
                     bgcolor='rgba(255,255,255,0.9)',
                     x=0.98,  # Оставляем справа
-                    y=0.88,  # ИЗМЕНЕНИЕ: Было 0.98, стало 0.88 (опускаем ниже)
+                    y=0.85,  # спуск легенды
                     xanchor='right',
                     yanchor='top'
                 )
@@ -1719,6 +1719,7 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
 
 
 
