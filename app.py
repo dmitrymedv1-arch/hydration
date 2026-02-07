@@ -609,7 +609,7 @@ def create_download_zip(plots_dict, results_df, results_json, results):
         # Save plots as PNG with high resolution
         for name, fig in plots_dict.items():
             # Convert Plotly figure to image with high DPI
-            img_bytes = pio.to_image(fig, format='png', width=2400, height=1800, scale=2)
+            img_bytes = fig.to_image(format='png', width=2400, height=1800, scale=2, engine='kaleido')
             zip_file.writestr(f'plots/{name}.png', img_bytes)
         
         # Save processed data
@@ -1870,3 +1870,4 @@ else:
 # Information
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
+
