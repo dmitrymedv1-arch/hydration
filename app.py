@@ -152,35 +152,21 @@ def calculate_equilibrium_oh(K, Acc, pH2O):
             return np.nan
 
 def analytical_OH_numerical(T_K, pH2O, Acc, dH, dS):
-    """Correct analytical expression for [OH]"""
+    """Analytical expression for [OH] with numerical solution"""
     # Calculate Kw
     Kw = np.exp(-dH/(R * T_K) + dS/R)
-    Kwp = Kw * pH2O  # Это K в ваших обозначениях
+    K = Kw * pH2O
     
-    # Ваша аналитическая формула
-    # [OH] = [3Kwp*pH2O - (Kwp*pH2O * {9Kwp*pH2O - 6Kwp*pH2O*Acc + Kwp*pH2O*Acc^2 + 24*Acc - 4*Acc^2})^0.5] / (Kwp*pH2O - 4)
+    # Scalar input
+    if isinstance(T_K, (int, float)):
+        return calculate_equilibrium_oh(K, Acc, pH2O)
     
-    # Проверяем на корректность
-    term1 = 3 * Kwp * pH2O
-    term2 = Kwp * pH2O * (9*Kwp*pH2O - 6*Kwp*pH2O*Acc + Kwp*pH2O*Acc**2 + 24*Acc - 4*Acc**2)
+    # Array input
+    results = np.zeros_like(K)
+    for i in range(len(K)):
+        results[i] = calculate_equilibrium_oh(K[i], Acc, pH2O)
     
-    # Защита от отрицательного подкоренного выражения
-    if term2 < 0:
-        return np.nan
-    
-    denominator = Kwp * pH2O - 4
-    
-    # Защита от деления на ноль
-    if abs(denominator) < 1e-30:
-        return np.nan
-    
-    OH = (term1 - np.sqrt(term2)) / denominator
-    
-    # Проверка физического смысла
-    if OH < 0 or OH > Acc:
-        return np.nan
-    
-    return OH
+    return results
 
 def calculate_Kw_with_validation(T_K, OH, pH2O, Acc):
     """Calculate Kw with data validation"""
@@ -2287,6 +2273,4 @@ else:
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
 st.markdown("**Note on Bayesian fitting:** Requires PyMC and ArviZ packages. Install with: `pip install pymc arviz`")
-
-
 
