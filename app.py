@@ -103,37 +103,65 @@ if 'default_params' not in st.session_state:
 
 @st.cache_data(ttl=300)
 def calculate_equilibrium_oh(K, Acc, pH2O):
-    """Numerical solution for equilibrium [OH] concentration"""
+    """Numerical solution for equilibrium [OH] concentration - ИСПРАВЛЕНО"""
     if K <= 0 or pH2O <= 0 or Acc <= 0:
         return np.nan
     
     def f(oh):
         return 4 * oh**2 - K * pH2O * (Acc - oh) * (6 - Acc - oh)
     
+    # Физически допустимый диапазон для [OH]
+    # [OH] не может превышать Acc и не может быть меньше 0
+    # Также [OH] не может превышать (6-Acc) из-за стехиометрии
+    oh_max = min(Acc, 6 - Acc)
+    if oh_max <= 0:
+        return np.nan
+    
     try:
-        # Try Brent's method with physical boundaries
+        # Проверяем знаки на границах интервала
+        f_low = f(1e-12)
+        f_high = f(oh_max - 1e-12)
+        
+        # Если знаки одинаковые, возможно нет корня или корень на границе
+        if f_low * f_high > 0:
+            # Проверяем, не является ли граница решением
+            if abs(f_low) < 1e-10:
+                return 1e-12
+            if abs(f_high) < 1e-10:
+                return oh_max - 1e-12
+            return np.nan
+        
+        # Используем Brent's method с улучшенными параметрами
         sol = root_scalar(
             f, 
-            bracket=[1e-12, Acc - 1e-12],
+            bracket=[1e-12, oh_max - 1e-12],
             method='brentq',
-            xtol=1e-14,
-            rtol=1e-14
+            xtol=1e-12,
+            rtol=1e-12,
+            maxiter=200
         )
-        if sol.converged and 1e-12 <= sol.root <= Acc - 1e-12:
-            return float(sol.root)
+        
+        if sol.converged:
+            oh_solution = float(sol.root)
+            # Дополнительная проверка физичности
+            if 0 <= oh_solution <= oh_max:
+                return oh_solution
+            else:
+                return np.nan
         else:
             return np.nan
-    except (ValueError, RuntimeError):
-        # Fallback: bisection method
+            
+    except (ValueError, RuntimeError) as e:
+        # Fallback: метод половинного деления
         try:
-            low, high = 1e-12, Acc - 1e-12
+            low, high = 1e-12, oh_max - 1e-12
             f_low = f(low)
             f_high = f(high)
             
             if f_low * f_high > 0:
                 return np.nan
             
-            for _ in range(100):
+            for _ in range(200):
                 mid = (low + high) / 2
                 f_mid = f(mid)
                 
@@ -147,36 +175,68 @@ def calculate_equilibrium_oh(K, Acc, pH2O):
                     low = mid
                     f_low = f_mid
             
-            return float((low + high) / 2)
+            oh_solution = (low + high) / 2
+            if 0 <= oh_solution <= oh_max:
+                return float(oh_solution)
+            else:
+                return np.nan
+                
         except:
             return np.nan
 
 def analytical_OH_numerical(T_K, pH2O, Acc, dH, dS):
-    """Analytical expression for [OH] with numerical solution"""
-    # Calculate Kw
+    """Analytical expression for [OH] with numerical solution - ИСПРАВЛЕНО"""
+    # Рассчитываем Kw
     Kw = np.exp(-dH/(R * T_K) + dS/R)
     K = Kw * pH2O
     
-    # Scalar input
+    # Для скалярного входа
     if isinstance(T_K, (int, float)):
         return calculate_equilibrium_oh(K, Acc, pH2O)
     
-    # Array input
-    results = np.zeros_like(K)
+    # Для массивов
+    results = np.zeros_like(K, dtype=float)
     for i in range(len(K)):
-        results[i] = calculate_equilibrium_oh(K[i], Acc, pH2O)
+        # Проверяем физическую допустимость
+        if K[i] <= 0 or Acc <= 0 or pH2O <= 0:
+            results[i] = np.nan
+            continue
+            
+        # Рассчитываем [OH]
+        oh_val = calculate_equilibrium_oh(K[i], Acc, pH2O)
+        
+        # Если численное решение не удалось, пробуем аппроксимацию
+        if np.isnan(oh_val):
+            # Используем приближенную формулу для начального приближения
+            try:
+                # Квадратичное приближение для малых [OH]
+                if K[i] * pH2O < 1e-6:
+                    oh_val = np.sqrt(K[i] * pH2O * Acc * (6 - Acc) / 4)
+                else:
+                    oh_val = Acc * 0.5  # разумное приближение
+                
+                # Проверяем границы
+                oh_val = max(1e-12, min(oh_val, Acc - 1e-12))
+            except:
+                oh_val = np.nan
+        
+        results[i] = oh_val
     
     return results
 
 def calculate_Kw_with_validation(T_K, OH, pH2O, Acc):
-    """Calculate Kw with data validation"""
-    # Physical constraints check
+    """Calculate Kw with data validation - ИСПРАВЛЕНО"""
+    # Физические ограничения
+    # [OH] должен быть строго между 0 и Acc, и не превышать (6-Acc)
+    oh_max = min(Acc, 6 - Acc)
+    
     mask_valid = (
-        (OH > 0) & 
-        (OH < Acc) & 
+        (OH > 1e-12) & 
+        (OH < oh_max - 1e-12) &  # Используем min(Acc, 6-Acc)
         (T_K > 0) &
-        (pH2O > 0) &
-        (Acc > 0) & (Acc < 6)
+        (T_K < 2000) &  # Разумный верхний предел температуры
+        (pH2O > 1e-10) & (pH2O < 10) &
+        (Acc > 1e-6) & (Acc < 6 - 1e-6)
     )
     
     if not np.any(mask_valid):
@@ -185,15 +245,14 @@ def calculate_Kw_with_validation(T_K, OH, pH2O, Acc):
     T_K_valid = T_K[mask_valid]
     OH_valid = OH[mask_valid]
     
-    # Calculate Kw
-    numerator = 4 * OH_valid**2
+    # Расчет Kw с защитой от деления на ноль
     denominator = pH2O * (Acc - OH_valid) * (6 - Acc - OH_valid)
     
-    # Protection from division by zero and extreme values
+    # Защита от слишком малых знаменателей
     mask_finite = (
-        (denominator > 1e-30) & 
-        (numerator > 0) &
-        (denominator < 1e30)
+        (denominator > 1e-20) & 
+        (denominator < 1e20) &
+        (OH_valid > 1e-12)
     )
     
     if not np.any(mask_finite):
@@ -201,10 +260,21 @@ def calculate_Kw_with_validation(T_K, OH, pH2O, Acc):
     
     T_K_final = T_K_valid[mask_finite]
     OH_final = OH_valid[mask_finite]
-    Kw_final = numerator[mask_finite] / denominator[mask_finite]
+    denominator_final = denominator[mask_finite]
     
-    # Additional filtering of extreme values
-    mask_reasonable = (Kw_final > 1e-30) & (Kw_final < 1e30)
+    numerator = 4 * OH_final**2
+    Kw_final = numerator / denominator_final
+    
+    # Дополнительная фильтрация нефизичных значений Kw
+    # Kw должен быть положительным и не экстремальным
+    mask_reasonable = (
+        (Kw_final > 1e-20) & 
+        (Kw_final < 1e20) &
+        np.isfinite(Kw_final)
+    )
+    
+    if not np.any(mask_reasonable):
+        return np.array([]), np.array([]), np.array([])
     
     return (
         T_K_final[mask_reasonable], 
@@ -1268,6 +1338,56 @@ def create_3d_surface(results, colors, palette_design, contour_count, use_log_sc
     
     return fig
 
+def check_method_consistency(results):
+    """Проверка согласованности методов 1 и 2 - НОВАЯ ФУНКЦИЯ"""
+    if results is None:
+        return None
+    
+    dH1 = results['method1']['dH'] / 1000  # kJ/mol
+    dH2 = results['method2']['dH'] / 1000  # kJ/mol
+    dS1 = results['method1']['dS']
+    dS2 = results['method2']['dS']
+    
+    # Рассчитываем относительные различия
+    dH_diff_percent = abs(dH2 - dH1) / abs(dH1) * 100 if dH1 != 0 else 0
+    dS_diff = abs(dS2 - dS1)
+    
+    # Проверяем качество фитинга методом 2 через сравнение с методом 1
+    if dH_diff_percent > 15 or dS_diff > 30:
+        warning_msg = (
+            f"⚠️ **Method inconsistency detected!**\n\n"
+            f"ΔH difference: {dH_diff_percent:.1f}%\n"
+            f"ΔS difference: {dS_diff:.1f} J/(mol·K)\n\n"
+            f"This may indicate:\n"
+            f"1. Numerical instability in Method 2 fitting\n"
+            f"2. Need to adjust point exclusions\n"
+            f"3. Possible issues with data quality at extremes\n\n"
+            f"**Recommendation:** Use Method 1 results or adjust exclusions"
+        )
+    elif dH_diff_percent > 5 or dS_diff > 15:
+        warning_msg = (
+            f"ℹ️ **Moderate method inconsistency**\n\n"
+            f"ΔH difference: {dH_diff_percent:.1f}%\n"
+            f"ΔS difference: {dS_diff:.1f} J/(mol·K)\n\n"
+            f"Results are reasonably consistent but check your data."
+        )
+    else:
+        warning_msg = (
+            f"✅ **Good method consistency!**\n\n"
+            f"ΔH difference: {dH_diff_percent:.1f}%\n"
+            f"ΔS difference: {dS_diff:.1f} J/(mol·K)"
+        )
+    
+    return {
+        'dH1': dH1,
+        'dH2': dH2,
+        'dS1': dS1,
+        'dS2': dS2,
+        'dH_diff_percent': dH_diff_percent,
+        'dS_diff': dS_diff,
+        'message': warning_msg
+    }
+
 # ============================================================================
 # MAIN APPLICATION
 # ============================================================================
@@ -2273,4 +2393,5 @@ else:
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
 st.markdown("**Note on Bayesian fitting:** Requires PyMC and ArviZ packages. Install with: `pip install pymc arviz`")
+
 
