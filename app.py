@@ -151,36 +151,63 @@ def calculate_equilibrium_oh(K, Acc, pH2O):
         except:
             return np.nan
 
-def analytical_OH_numerical_corrected(T_K, pH2O, Acc, dH, dS):
+def solve_oh_from_kw(Kw_values, Acc):
     """
-    Правильная модель для расчета [OH] по термодинамическим параметрам
+    Решение уравнения 4*OH^2 = Kw * (Acc-OH) * (6-Acc-OH)
+    для заданных значений Kw
     """
-    # Kw из термодинамических параметров
-    Kw = np.exp(-dH/(R * T_K) + dS/R)
-    
-    # Для каждого значения температуры решаем уравнение
-    def solve_for_oh(kw_val):
-        if kw_val <= 0:
+    def solve_single(kw):
+        if kw <= 0:
             return np.nan
         
         def f(oh):
-            return 4 * oh**2 - kw_val * (Acc - oh) * (6 - Acc - oh)
+            return 4 * oh**2 - kw * (Acc - oh) * (6 - Acc - oh)
         
         try:
             sol = root_scalar(
                 f,
                 bracket=[1e-12, Acc - 1e-12],
-                method='brentq'
+                method='brentq',
+                xtol=1e-14
             )
             return sol.root if sol.converged else np.nan
         except:
             return np.nan
     
-    # Векторизованное решение
-    if isinstance(T_K, (int, float)):
-        return solve_for_oh(Kw)
+    if isinstance(Kw_values, (int, float)):
+        return solve_single(Kw_values)
     else:
-        return np.array([solve_for_oh(kw) for kw in Kw])
+        return np.array([solve_single(kw) for kw in Kw_values])
+
+def analytical_OH_numerical(T_K, pH2O, Acc, dH, dS):
+    """
+    Исправленная функция для расчета [OH] по термодинамическим параметрам
+    """
+    # Рассчитываем Kw из термодинамических параметров
+    Kw = np.exp(-dH/(R * T_K) + dS/R)
+    
+    # Решаем уравнение для каждого значения Kw
+    return solve_oh_from_kw(Kw, Acc)
+
+def get_oh_from_method1_params(T_K, pH2O, Acc, dH, dS):
+    """
+    Расчет [OH] по параметрам метода 1
+    Используется для построения кривой метода 1 на графиках
+    """
+    # Рассчитываем Kw из параметров метода 1
+    Kw = np.exp(-dH/(R * T_K) + dS/R)
+    # Решаем уравнение для OH
+    return solve_oh_from_kw(Kw, Acc)
+
+def get_oh_from_method2_params(T_K, pH2O, Acc, dH, dS):
+    """
+    Расчет [OH] по параметрам метода 2
+    Используется для построения кривой метода 2 на графиках
+    """
+    # Метод 2 использует ту же физическую модель, что и method1
+    # Просто параметры получены другим способом
+    Kw = np.exp(-dH/(R * T_K) + dS/R)
+    return solve_oh_from_kw(Kw, Acc)
 
 def calculate_Kw_with_validation(T_K, OH, pH2O, Acc):
     """Calculate Kw with data validation"""
@@ -1162,9 +1189,9 @@ def create_3d_surface(results, colors, palette_design, contour_count, use_log_sc
     for i in range(len(pH2O_range)):
         for j in range(len(T_range)):
             T_K_val = T_range[j] + 273.15
-            OH_grid[i, j] = analytical_OH_numerical(
-                T_K_val, 
-                pH2O_range[i], 
+            OH_grid[i, j] = get_oh_from_method2_params(
+                T_K_val,
+                pH2O_range[i],
                 results['parameters']['Acc'],
                 results['method2']['dH'],
                 results['method2']['dS']
@@ -1965,8 +1992,8 @@ if n_total_points > 0:
             
             # Method 1 curve (только если выбрано в виджете)
             if show_method1_comparison:
-                OH_fit_m1 = analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, 
-                                                  results['method1']['dH'], results['method1']['dS'])
+                OH_fit_m1 = get_oh_from_method1_params(T_K_fit, pH2O_value, Acc_value,
+                                                      results['method1']['dH'], results['method1']['dS'])
                 
                 fig4.add_trace(go.Scatter(
                     x=T_fit,
@@ -1983,8 +2010,8 @@ if n_total_points > 0:
             
             # Method 2 curve (только если выбрано в виджете)
             if show_method2_comparison:
-                OH_fit_m2 = analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, 
-                                                  results['method2']['dH'], results['method2']['dS'])
+                OH_fit_m2 = get_oh_from_method2_params(T_K_fit, pH2O_value, Acc_value,
+                                                      results['method2']['dH'], results['method2']['dS'])
                 
                 # Определяем легенду в зависимости от видимости Method 1
                 if show_method1_comparison:
@@ -2287,5 +2314,6 @@ else:
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
 st.markdown("**Note on Bayesian fitting:** Requires PyMC and ArviZ packages. Install with: `pip install pymc arviz`")
+
 
 
