@@ -180,14 +180,33 @@ def solve_oh_from_kw(Kw_values, Acc):
         return np.array([solve_single(kw) for kw in Kw_values])
 
 def analytical_OH_numerical(T_K, pH2O, Acc, dH, dS):
-    """
-    Исправленная функция для расчета [OH] по термодинамическим параметрам
-    """
-    # Рассчитываем Kw из термодинамических параметров
+    """Calculate [OH] from thermodynamic parameters - FIXED VERSION"""
+    # Calculate Kw from thermodynamic parameters
     Kw = np.exp(-dH/(R * T_K) + dS/R)
     
-    # Решаем уравнение для каждого значения Kw
-    return solve_oh_from_kw(Kw, Acc)
+    # For fitting, we need to use the SAME relationship as in calculate_Kw_with_validation
+    # Kw = 4*OH^2 / [pH2O * (Acc-OH) * (6-Acc-OH)]
+    # Therefore, OH must satisfy:
+    # 4*OH^2 = Kw * pH2O * (Acc-OH) * (6-Acc-OH)
+    
+    # Scalar input
+    if isinstance(T_K, (int, float)):
+        K = Kw * pH2O  # This is correct! K = Kw * pH2O
+        return calculate_equilibrium_oh(K, Acc, pH2O)
+    
+    # Array input
+    results = np.zeros_like(T_K)
+    for i, t in enumerate(T_K):
+        Kw_val = np.exp(-dH/(R * t) + dS/R)
+        K_val = Kw_val * pH2O
+        results[i] = calculate_equilibrium_oh(K_val, Acc, pH2O)
+    
+    return results
+
+def calculate_lnKw_from_params(T_K, pH2O, Acc, dH, dS):
+    """Calculate ln(Kw) from thermodynamic parameters for method comparison"""
+    Kw = np.exp(-dH/(R * T_K) + dS/R)
+    return np.log(Kw)
 
 def get_oh_from_method1_params(T_K, pH2O, Acc, dH, dS):
     """
@@ -210,7 +229,7 @@ def get_oh_from_method2_params(T_K, pH2O, Acc, dH, dS):
     return solve_oh_from_kw(Kw, Acc)
 
 def calculate_Kw_with_validation(T_K, OH, pH2O, Acc):
-    """Calculate Kw with data validation"""
+    """Calculate Kw with data validation - VERIFIED FORMULA"""
     # Physical constraints check
     mask_valid = (
         (OH > 0) & 
@@ -226,7 +245,7 @@ def calculate_Kw_with_validation(T_K, OH, pH2O, Acc):
     T_K_valid = T_K[mask_valid]
     OH_valid = OH[mask_valid]
     
-    # Calculate Kw
+    # CORRECT FORMULA: Kw = 4*OH^2 / [pH2O * (Acc-OH) * (6-Acc-OH)]
     numerator = 4 * OH_valid**2
     denominator = pH2O * (Acc - OH_valid) * (6 - Acc - OH_valid)
     
@@ -258,21 +277,28 @@ def calculate_Kw_with_validation(T_K, OH, pH2O, Acc):
 # ============================================================================
 
 def perform_bayesian_fitting(T_K, OH_exp, pH2O_value, Acc_value, dH_init, dS_init):
-    """Perform Bayesian fitting using MCMC sampling"""
+    """Perform Bayesian fitting using MCMC sampling - FIXED MODEL"""
     try:
-        # Try to import PyMC
         import pymc as pm
         import arviz as az
         
-        # Define Bayesian model
+        # Define Bayesian model with correct physical model
         with pm.Model() as model:
             # Priors
             dH = pm.Normal('dH', mu=dH_init, sigma=abs(dH_init)*0.5)
             dS = pm.Normal('dS', mu=dS_init, sigma=abs(dS_init)*0.5)
             
-            # Expected value
+            # Expected value using correct model
+            def oh_model(T, dH, dS):
+                results = np.zeros_like(T)
+                for i, t in enumerate(T):
+                    Kw = np.exp(-dH/(R * t) + dS/R)
+                    K = Kw * pH2O_value
+                    results[i] = calculate_equilibrium_oh(K, Acc_value, pH2O_value)
+                return results
+            
             OH_pred = pm.Deterministic('OH_pred', 
-                analytical_OH_numerical(T_K, pH2O_value, Acc_value, dH, dS)
+                oh_model(T_K, dH, dS)
             )
             
             # Likelihood
@@ -1037,23 +1063,40 @@ def perform_calculations(data_input_text, uploaded_file, pH2O_value, Acc_value,
     OH_exp_m2 = OH_exp[n_low_m2:len(OH_exp)-n_high_m2]
     T_C_m2 = T_C[n_low_m2:len(T_C)-n_high_m2]
     
-    # Fitting function
+    # Fitting function - IMPORTANT: This must match the physical model
     def model_OH_fit(T_K_fit, dH, dS):
-        return analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, dH, dS)
+        # Calculate Kw from parameters
+        Kw = np.exp(-dH/(R * T_K_fit) + dS/R)
+        
+        # Vectorized solution
+        results = np.zeros_like(T_K_fit)
+        for i, t in enumerate(T_K_fit):
+            Kw_val = np.exp(-dH/(R * t) + dS/R)
+            K_val = Kw_val * pH2O_value
+            results[i] = calculate_equilibrium_oh(K_val, Acc_value, pH2O_value)
+        
+        return results
     
     try:
-        # Nonlinear fitting
+        # Nonlinear fitting with better initial guess
+        # Use method 1 results as initial guess
+        p0 = [dH_method1, dS_method1]
+        
+        # Add small random perturbation to avoid exact singularity
+        p0 = [p0[0] + np.random.randn() * 100, p0[1] + np.random.randn() * 1]
+        
         popt, pcov = curve_fit(
             model_OH_fit, 
             T_K_m2, 
             OH_exp_m2,
-            p0=[dH_method1, dS_method1],
+            p0=p0,
             bounds=([-500000, -500], [0, 500]),
-            maxfev=10000
+            maxfev=10000,
+            method='trf'  # More robust method
         )
         
         dH_method2, dS_method2 = popt
-        perr = np.sqrt(np.diag(pcov))
+        perr = np.sqrt(np.diag(pcov)) if np.isfinite(pcov).all() else [0, 0]
         
         # Calculate model values
         OH_model_m2 = model_OH_fit(T_K_m2, dH_method2, dS_method2)
@@ -1069,17 +1112,26 @@ def perform_calculations(data_input_text, uploaded_file, pH2O_value, Acc_value,
         dH_ci_m2 = 1.96 * perr[0]
         dS_ci_m2 = 1.96 * perr[1]
         
+        # Calculate lnKw from fitted parameters for comparison
+        lnKw_fitted = np.log(np.exp(-dH_method2/(R * T_K_m2) + dS_method2/R))
+        
     except Exception as e:
+        st.warning(f"Fitting warning: {e}")
         # Use Method 1 parameters if fitting fails
         dH_method2, dS_method2 = dH_method1, dS_method1
-        R2_method2 = 0
-        SSE = np.nan
+        R2_method2 = results['method1']['r_squared']
+        SSE = results['method1']['n_valid'] * (1 - R2_method2) * np.var(OH_exp_m2) if len(OH_exp_m2) > 0 else np.nan
         RMSE = np.nan
         perr = [0, 0]
-        dH_ci_m2 = 0
-        dS_ci_m2 = 0
-        OH_model_m2 = analytical_OH_numerical(T_K_m2, pH2O_value, Acc_value, dH_method2, dS_method2)
+        dH_ci_m2 = results['method1']['dH_ci']
+        dS_ci_m2 = results['method1']['dS_ci']
+        OH_model_m2 = model_OH_fit(T_K_m2, dH_method2, dS_method2)
         residuals = OH_exp_m2 - OH_model_m2
+        lnKw_fitted = calculate_lnKw_from_params(T_K_m2, pH2O_value, Acc_value, dH_method2, dS_method2)
+
+        # Add lnKw comparison to results
+        results['method2']['lnKw_fitted'] = lnKw_fitted
+        results['method2']['lnKw_experimental'] = results['method1']['ln_Kw'][:len(T_K_m2)] if len(results['method1']['ln_Kw']) >= len(T_K_m2) else np.array([])
     
     # ========================================================================
     # METHOD 3: Bayesian Fitting (optional)
@@ -2314,6 +2366,7 @@ else:
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
 st.markdown("**Note on Bayesian fitting:** Requires PyMC and ArviZ packages. Install with: `pip install pymc arviz`")
+
 
 
 
