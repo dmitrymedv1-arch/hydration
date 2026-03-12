@@ -54,6 +54,9 @@ if 'default_params' not in st.session_state:
     st.session_state.default_params = {
         'pH2O': 0.03,
         'Acc': 0.48,
+        'material_type': 'perovskite',  # НОВО: тип материала
+        'a_param': 0.24,  # НОВО: параметр a (структурные вакансии)
+        'b_param': 2.76,  # НОВО: параметр b (кислороды)
         'data': """748.8659794 0.007038664
 720.8247423 0.006256591
 697.7319588 0.009384886
@@ -98,45 +101,59 @@ if 'default_params' not in st.session_state:
     }
 
 # ============================================================================
-# NUMERICAL FUNCTIONS - ИСПРАВЛЕНО НА ОСНОВЕ ВАШИХ ДАННЫХ
+# НОВЫЕ ФУНКЦИИ ДЛЯ РАСЧЕТА С УЧЕТОМ A И B ПАРАМЕТРОВ
 # ============================================================================
 
-@st.cache_data(ttl=300)
-def calculate_equilibrium_oh(K, Acc, pH2O):
-    """Numerical solution for equilibrium [OH] concentration - ИСПРАВЛЕНО на основе вашей формулы"""
-    if K <= 0 or pH2O <= 0 or Acc <= 0:
+def calculate_2a_and_2b(material_type, Acc_value, a_param, b_param):
+    """
+    Calculate 2a and 2b values based on material type
+    Returns (two_a, two_b) where:
+    - two_a = 2a (used in denominator as (2a - [OH]))
+    - two_b = 2b (used in denominator as (2b - [OH]))
+    """
+    if material_type == 'perovskite':
+        # For perovskite ABO₃ with acceptor doping
+        # a = [Acc]/2, b = 3 - [Acc]/2
+        two_a = Acc_value  # 2a = [Acc]
+        two_b = 6 - Acc_value  # 2b = 6 - [Acc]
+    else:
+        # For custom materials with user-defined a and b
+        # a and b are given directly
+        two_a = 2 * a_param
+        two_b = 2 * b_param
+    
+    return two_a, two_b
+
+def calculate_equilibrium_oh_general(K, two_a, two_b, pH2O):
+    """
+    Numerical solution for equilibrium [OH] concentration - GENERALIZED
+    Uses the equation: 4[OH]^2 - K * pH2O * (2a - [OH]) * (2b - [OH]) = 0
+    """
+    if K <= 0 or pH2O <= 0 or two_a <= 0 or two_b <= 0:
         return np.nan
     
-    # Ваше уравнение: [OH] = [3Kwp*pH2O - (Kwp*pH2O*{9Kwp*pH2O - 6Kwp*pH2O*[Acc] + Kwp*pH2O*[Acc]^2 + 24[Acc] - 4[Acc]^2})^0.5] / (Kw*pH2O - 4)
-    # где Kw = K (константа равновесия)
-    
-    def f(oh):
-        # Исходное уравнение: Kw = 4[OH]^2 / (pH2O * ([Acc] - [OH]) * (6 - [Acc] - [OH]))
-        # Преобразуем к виду: 4[OH]^2 - Kw * pH2O * ([Acc] - [OH]) * (6 - [Acc] - [OH]) = 0
-        return 4 * oh**2 - K * pH2O * (Acc - oh) * (6 - Acc - oh)
-    
-    # Физически допустимый диапазон для [OH]
-    # [OH] не может превышать Acc и не может быть меньше 0
-    # Также [OH] не может превышать (6-Acc) из-за стехиометрии
-    oh_max = min(Acc, 6 - Acc)
+    # Physical constraints: [OH] cannot exceed 2a or 2b
+    oh_max = min(two_a, two_b)
     if oh_max <= 0:
         return np.nan
     
+    def f(oh):
+        return 4 * oh**2 - K * pH2O * (two_a - oh) * (two_b - oh)
+    
     try:
-        # Проверяем знаки на границах интервала
+        # Check signs at boundaries
         f_low = f(1e-12)
         f_high = f(oh_max - 1e-12)
         
-        # Если знаки одинаковые, возможно нет корня или корень на границе
+        # If signs are the same, check if boundary is solution
         if f_low * f_high > 0:
-            # Проверяем, не является ли граница решением
             if abs(f_low) < 1e-10:
                 return 1e-12
             if abs(f_high) < 1e-10:
                 return oh_max - 1e-12
             return np.nan
         
-        # Используем Brent's method с улучшенными параметрами
+        # Use Brent's method
         sol = root_scalar(
             f, 
             bracket=[1e-12, oh_max - 1e-12],
@@ -148,7 +165,6 @@ def calculate_equilibrium_oh(K, Acc, pH2O):
         
         if sol.converged:
             oh_solution = float(sol.root)
-            # Дополнительная проверка физичности
             if 0 <= oh_solution <= oh_max:
                 return oh_solution
             else:
@@ -156,8 +172,8 @@ def calculate_equilibrium_oh(K, Acc, pH2O):
         else:
             return np.nan
             
-    except (ValueError, RuntimeError) as e:
-        # Fallback: метод половинного деления
+    except (ValueError, RuntimeError):
+        # Fallback: bisection method
         try:
             low, high = 1e-12, oh_max - 1e-12
             f_low = f(low)
@@ -189,56 +205,57 @@ def calculate_equilibrium_oh(K, Acc, pH2O):
         except:
             return np.nan
 
-def analytical_OH_numerical(T_K, pH2O, Acc, dH, dS):
-    """Calculate [OH] using the analytical solution from your equation"""
-    # Рассчитываем Kw из термодинамических параметров
-    # Kw = exp(-dH/(R*T) + dS/R)
+def analytical_oh_numerical_general(T_K, pH2O, two_a, two_b, dH, dS):
+    """
+    Calculate [OH] using the generalized analytical solution
+    """
+    # Calculate Kw from thermodynamic parameters
     Kw = np.exp(-dH/(R * T_K) + dS/R)
     
-    # Для скалярного входа
+    # For scalar input
     if isinstance(T_K, (int, float)):
-        return calculate_equilibrium_oh(Kw, Acc, pH2O)
+        return calculate_equilibrium_oh_general(Kw, two_a, two_b, pH2O)
     
-    # Для массивов
+    # For arrays
     results = np.zeros_like(T_K, dtype=float)
     for i, t in enumerate(T_K):
         Kw_val = np.exp(-dH/(R * t) + dS/R)
         
-        # Проверяем физическую допустимость
-        if Kw_val <= 0 or Acc <= 0 or pH2O <= 0:
+        # Check physical validity
+        if Kw_val <= 0 or pH2O <= 0 or two_a <= 0 or two_b <= 0:
             results[i] = np.nan
             continue
-            
-        # Рассчитываем [OH]
-        oh_val = calculate_equilibrium_oh(Kw_val, Acc, pH2O)
         
-        # Если численное решение не удалось, пробуем прямое аналитическое решение
+        # Calculate [OH]
+        oh_val = calculate_equilibrium_oh_general(Kw_val, two_a, two_b, pH2O)
+        
+        # If numerical solution fails, try analytical solution
         if np.isnan(oh_val):
             try:
-                # Прямое аналитическое решение из вашей формулы:
-                # [OH] = [3Kw*pH2O - sqrt(Kw*pH2O*(9Kw*pH2O - 6Kw*pH2O*Acc + Kw*pH2O*Acc^2 + 24Acc - 4Acc^2))] / (Kw*pH2O - 4)
+                # Analytical solution: [OH] = (A - sqrt(A^2 - B)) where
+                # A = (two_a + two_b) * Kw * pH2O / (Kw * pH2O - 4)
+                # B = 4 * two_a * two_b * Kw * pH2O / (Kw * pH2O - 4)
                 
                 Kp = Kw_val * pH2O
                 
-                # Проверяем, что знаменатель не близок к нулю
+                # Check denominator
                 if abs(Kp - 4) < 1e-10:
                     results[i] = np.nan
                     continue
                 
-                # Вычисляем подкоренное выражение
-                sqrt_term = Kp * (9*Kp - 6*Kp*Acc + Kp*Acc**2 + 24*Acc - 4*Acc**2)
+                A = (two_a + two_b) * Kp / (Kp - 4)
+                B = 4 * two_a * two_b * Kp / (Kp - 4)
                 
-                if sqrt_term < 0:
+                # Check discriminant
+                discriminant = A**2 - B
+                if discriminant < 0:
                     results[i] = np.nan
                     continue
                 
-                sqrt_val = np.sqrt(sqrt_term)
+                oh_analytical = A - np.sqrt(discriminant)
                 
-                oh_analytical = (3*Kp - sqrt_val) / (Kp - 4)
-                
-                # Проверяем физичность
-                oh_max = min(Acc, 6 - Acc)
-                if 0 <= oh_analytical <= oh_max:
+                # Check physicality
+                if 0 <= oh_analytical <= min(two_a, two_b):
                     results[i] = oh_analytical
                 else:
                     results[i] = np.nan
@@ -250,12 +267,14 @@ def analytical_OH_numerical(T_K, pH2O, Acc, dH, dS):
     
     return results
 
-def calculate_Kw_with_validation(T_K, OH, pH2O, Acc):
-    """Calculate Kw from experimental data using your formula: Kw = 4[OH]^2/(pH2O*([Acc]-[OH])*(6-[Acc]-[OH]))"""
+def calculate_Kw_with_validation_general(T_K, OH, pH2O, two_a, two_b):
+    """
+    Calculate Kw from experimental data using generalized formula:
+    Kw = 4[OH]^2/(pH2O*(2a-[OH])*(2b-[OH]))
+    """
     
-    # Физические ограничения
-    # [OH] должен быть строго между 0 и Acc, и не превышать (6-Acc)
-    oh_max = min(Acc, 6 - Acc)
+    # Physical constraints
+    oh_max = min(two_a, two_b)
     
     mask_valid = (
         (OH > 1e-12) & 
@@ -263,7 +282,7 @@ def calculate_Kw_with_validation(T_K, OH, pH2O, Acc):
         (T_K > 0) &
         (T_K < 2000) &
         (pH2O > 1e-10) & (pH2O < 10) &
-        (Acc > 1e-6) & (Acc < 6 - 1e-6)
+        (two_a > 1e-6) & (two_b > 1e-6)
     )
     
     if not np.any(mask_valid):
@@ -272,10 +291,10 @@ def calculate_Kw_with_validation(T_K, OH, pH2O, Acc):
     T_K_valid = T_K[mask_valid]
     OH_valid = OH[mask_valid]
     
-    # Расчет Kw по вашей формуле: Kw = 4[OH]^2/(pH2O*([Acc]-[OH])*(6-[Acc]-[OH]))
-    denominator = pH2O * (Acc - OH_valid) * (6 - Acc - OH_valid)
+    # Calculate Kw: Kw = 4[OH]^2/(pH2O*(2a-[OH])*(2b-[OH]))
+    denominator = pH2O * (two_a - OH_valid) * (two_b - OH_valid)
     
-    # Защита от слишком малых знаменателей
+    # Protection against too small denominators
     mask_finite = (
         (denominator > 1e-20) & 
         (denominator < 1e20) &
@@ -292,7 +311,7 @@ def calculate_Kw_with_validation(T_K, OH, pH2O, Acc):
     numerator = 4 * OH_final**2
     Kw_final = numerator / denominator_final
     
-    # Дополнительная фильтрация нефизичных значений Kw
+    # Additional filtering of unphysical Kw values
     mask_reasonable = (
         (Kw_final > 1e-20) & 
         (Kw_final < 1e20) &
@@ -309,11 +328,13 @@ def calculate_Kw_with_validation(T_K, OH, pH2O, Acc):
     )
 
 # ============================================================================
-# BAYESIAN FITTING FUNCTIONS - ИСПРАВЛЕНО
+# МОДИФИЦИРОВАННЫЕ ФУНКЦИИ ДЛЯ БАЙЕСОВСКОГО ФИТИНГА
 # ============================================================================
 
-def perform_bayesian_fitting(T_K, OH_exp, pH2O_value, Acc_value, dH_init, dS_init):
-    """Perform Bayesian fitting using MCMC sampling"""
+def perform_bayesian_fitting_general(T_K, OH_exp, pH2O_value, two_a, two_b, dH_init, dS_init):
+    """
+    Perform Bayesian fitting using MCMC sampling - GENERALIZED
+    """
     try:
         # Try to import PyMC
         import pymc as pm
@@ -321,14 +342,13 @@ def perform_bayesian_fitting(T_K, OH_exp, pH2O_value, Acc_value, dH_init, dS_ini
         
         # Define Bayesian model
         with pm.Model() as model:
-            # Priors based on typical values from your data
-            # Для ваших данных: dH ≈ -92.5 kJ/mol, dS ≈ -128.3 J/(mol·K)
+            # Priors based on typical values
             dH = pm.Normal('dH', mu=dH_init, sigma=abs(dH_init)*0.3)
             dS = pm.Normal('dS', mu=dS_init, sigma=abs(dS_init)*0.3)
             
-            # Expected value using the analytical solution
+            # Expected value using the generalized analytical solution
             OH_pred = pm.Deterministic('OH_pred', 
-                analytical_OH_numerical(T_K, pH2O_value, Acc_value, dH, dS)
+                analytical_oh_numerical_general(T_K, pH2O_value, two_a, two_b, dH, dS)
             )
             
             # Likelihood with adaptive sigma
@@ -359,7 +379,7 @@ def perform_bayesian_fitting(T_K, OH_exp, pH2O_value, Acc_value, dH_init, dS_ini
         dS_hdi_high = float(summary.loc['dS', 'hdi_97.5%'])
         
         # Calculate predictions
-        OH_model_bayes = analytical_OH_numerical(T_K, pH2O_value, Acc_value, dH_mean, dS_mean)
+        OH_model_bayes = analytical_oh_numerical_general(T_K, pH2O_value, two_a, two_b, dH_mean, dS_mean)
         residuals_bayes = OH_exp - OH_model_bayes
         
         # Calculate R²
@@ -385,14 +405,16 @@ def perform_bayesian_fitting(T_K, OH_exp, pH2O_value, Acc_value, dH_init, dS_ini
         
     except ImportError as e:
         st.warning(f"PyMC not available: {e}. Using bootstrap method for Bayesian intervals.")
-        return perform_bootstrap_fitting(T_K, OH_exp, pH2O_value, Acc_value, dH_init, dS_init)
+        return perform_bootstrap_fitting_general(T_K, OH_exp, pH2O_value, two_a, two_b, dH_init, dS_init)
     except Exception as e:
         st.warning(f"Bayesian fitting failed: {e}. Using bootstrap method.")
-        return perform_bootstrap_fitting(T_K, OH_exp, pH2O_value, Acc_value, dH_init, dS_init)
+        return perform_bootstrap_fitting_general(T_K, OH_exp, pH2O_value, two_a, two_b, dH_init, dS_init)
 
-def perform_bootstrap_fitting(T_K, OH_exp, pH2O_value, Acc_value, dH_init, dS_init):
-    """Simple bootstrap method for uncertainty estimation"""
-    n_bootstrap = 200  # Увеличиваем для лучшей статистики
+def perform_bootstrap_fitting_general(T_K, OH_exp, pH2O_value, two_a, two_b, dH_init, dS_init):
+    """
+    Simple bootstrap method for uncertainty estimation - GENERALIZED
+    """
+    n_bootstrap = 200
     n_points = len(T_K)
     
     dH_samples = []
@@ -407,7 +429,7 @@ def perform_bootstrap_fitting(T_K, OH_exp, pH2O_value, Acc_value, dH_init, dS_in
         try:
             # Fit to resampled data using curve_fit
             def model_OH_fit(T_K_fit, dH, dS):
-                return analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, dH, dS)
+                return analytical_oh_numerical_general(T_K_fit, pH2O_value, two_a, two_b, dH, dS)
             
             popt, _ = curve_fit(
                 model_OH_fit,
@@ -425,7 +447,7 @@ def perform_bootstrap_fitting(T_K, OH_exp, pH2O_value, Acc_value, dH_init, dS_in
     
     if len(dH_samples) < 20:
         # Not enough successful fits, return simple results
-        OH_model = analytical_OH_numerical(T_K, pH2O_value, Acc_value, dH_init, dS_init)
+        OH_model = analytical_oh_numerical_general(T_K, pH2O_value, two_a, two_b, dH_init, dS_init)
         residuals = OH_exp - OH_model
         
         return {
@@ -450,7 +472,7 @@ def perform_bootstrap_fitting(T_K, OH_exp, pH2O_value, Acc_value, dH_init, dS_in
     dS_mean = np.mean(dS_samples)
     
     # Calculate predictions
-    OH_model_boot = analytical_OH_numerical(T_K, pH2O_value, Acc_value, dH_mean, dS_mean)
+    OH_model_boot = analytical_oh_numerical_general(T_K, pH2O_value, two_a, two_b, dH_mean, dS_mean)
     residuals_boot = OH_exp - OH_model_boot
     
     # Calculate R²
@@ -472,9 +494,9 @@ def perform_bootstrap_fitting(T_K, OH_exp, pH2O_value, Acc_value, dH_init, dS_in
         'OH_model': OH_model_boot,
         'residuals': residuals_boot
     }
-    
+
 # ============================================================================
-# DATA PROCESSING FUNCTIONS
+# DATA PROCESSING FUNCTIONS (ОСТАЮТСЯ БЕЗ ИЗМЕНЕНИЙ)
 # ============================================================================
 
 def parse_input_data(input_text, file_uploader=None):
@@ -578,7 +600,7 @@ def validate_input_data(data_array, Acc):
     return True, "Data is valid"
 
 # ============================================================================
-# PLOTTING FUNCTIONS - UPDATED FOR SCIENTIFIC PUBLICATIONS
+# PLOTTING FUNCTIONS (ОСТАЮТСЯ БЕЗ ИЗМЕНЕНИЙ)
 # ============================================================================
 
 def create_publication_figure(title, x_title, y_title, width=None, height=None):
@@ -847,7 +869,7 @@ def create_combined_fitting_figure(title, x_title, y_title_top, y_title_bottom, 
     return fig
 
 # ============================================================================
-# EXPORT FUNCTIONS
+# EXPORT FUNCTIONS (ОСТАЮТСЯ БЕЗ ИЗМЕНЕНИЙ)
 # ============================================================================
 
 def get_table_download_link(df, filename="results.csv"):
@@ -913,15 +935,22 @@ def create_download_zip(plots_dict, results_df, results_json, results):
         # Save summary report
         if results is not None:
             # Уточняем обозначения для энтальпии
+            material_type_str = "Perovskite (ABO₃)" if results['parameters']['material_type'] == 'perovskite' else f"Custom (a={results['parameters']['a_param']}, b={results['parameters']['b_param']})"
+            
             report = f"""THERMODYNAMIC ANALYSIS RESULTS
 ========================================
 
 Analysis performed: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
+MATERIAL TYPE:
+------------------
+{material_type_str}
+
 SYSTEM PARAMETERS:
 ------------------
 pH₂O = {results['parameters']['pH2O']:.5f} atm
-[Acc] = {results['parameters']['Acc']:.3f}
+Two a (2a) = {results['parameters']['two_a']:.3f}
+Two b (2b) = {results['parameters']['two_b']:.3f}
 
 METHOD 1 - EQUILIBRIUM CONSTANT ANALYSIS:
 -----------------------------------------
@@ -958,9 +987,10 @@ Archive Contents:
 1. plots/ - directory with interactive HTML plots, PNG images (if available), and JSON data
 2. processed_data.csv - processed data with calculated columns
 3. parameters.json - all analysis parameters in JSON format
+4. analysis_report.txt - this report
 
 Plots included (as HTML and PNG if kaleido available):
-1. experimental_data - Experimental data with [Acc] limit
+1. experimental_data - Experimental data with physical boundaries
 2. method1_lnkw_vs_1000t - Method 1: ln(Kw) vs 1000/T
 3. method2_fitting_residuals - Method 2: Profile fitting with residuals
 4. method_comparison - Comparison of Method 1 and Method 2 curves
@@ -978,13 +1008,22 @@ JSON files contain the raw plot data and can be loaded in Plotly.
         readme = """HYDRATION THERMODYNAMICS ANALYSIS - RESULTS
 =======================================================
 
-This archive contains all results from the thermodynamic analysis of AB₁₋ₓAccₓO₃₋ₓ/₂ based on proton concentration temperature profile.
+This archive contains all results from the thermodynamic analysis of proton-conducting materials based on proton concentration temperature profile.
 
 Files included:
 1. plots/ - Interactive HTML plots, PNG images (if available), and JSON plot data
 2. processed_data.csv - Processed experimental data with calculated values
 3. parameters.json - All analysis parameters in machine-readable format
 4. analysis_report.txt - Text summary of results and recommendations
+
+MATERIAL TYPES SUPPORTED:
+- Perovskites (ABO₃) with acceptor doping
+- Custom materials with user-defined a and b parameters:
+  * a = number of structural vacancies in anhydrous state
+  * b = number of oxygen atoms in formula unit
+
+THERMODYNAMIC MODEL:
+Kw = 4[OH]²/(pH₂O·(2a-[OH])·(2b-[OH]))
 
 HTML plots:
 - Can be opened in any web browser
@@ -1016,18 +1055,30 @@ def get_zip_download_link(zip_buffer, filename="thermodynamics_results.zip"):
     return href
 
 # ============================================================================
-# CALCULATION FUNCTIONS
+# НОВАЯ ФУНКЦИЯ ДЛЯ ВЫПОЛНЕНИЯ РАСЧЕТОВ С ОБОБЩЕННОЙ МОДЕЛЬЮ
 # ============================================================================
 
-def perform_calculations(data_input_text, uploaded_file, pH2O_value, Acc_value,
-                        exclude_low_T_method1, exclude_high_T_method1,
-                        exclude_low_T_method2, exclude_high_T_method2,
-                        use_bayesian_fitting, colors, contour_count, residuals_palette, palette_design):
-    """Perform all calculations and return results"""
+def perform_calculations_general(data_input_text, uploaded_file, pH2O_value, 
+                                 material_type, Acc_value, a_param, b_param,
+                                 exclude_low_T_method1, exclude_high_T_method1,
+                                 exclude_low_T_method2, exclude_high_T_method2,
+                                 use_bayesian_fitting, colors, contour_count, 
+                                 residuals_palette, palette_design):
+    """
+    Perform all calculations using generalized model with a and b parameters
+    """
     
     # Parse and validate data
     data_array, load_message = parse_input_data(data_input_text, uploaded_file)
-    is_valid, valid_message = validate_input_data(data_array, Acc_value)
+    
+    # For perovskite, use Acc_value for validation
+    if material_type == 'perovskite':
+        is_valid, valid_message = validate_input_data(data_array, Acc_value)
+    else:
+        # For custom materials, use min(two_a, two_b)/2 as approximate limit for validation
+        two_a, two_b = calculate_2a_and_2b(material_type, Acc_value, a_param, b_param)
+        approx_limit = min(two_a, two_b) / 2
+        is_valid, valid_message = validate_input_data(data_array, approx_limit)
     
     if not is_valid:
         return None, f"Validation error: {valid_message}", None, None
@@ -1039,21 +1090,24 @@ def perform_calculations(data_input_text, uploaded_file, pH2O_value, Acc_value,
     
     n_points = len(data_array)
     
+    # Calculate 2a and 2b based on material type
+    two_a, two_b = calculate_2a_and_2b(material_type, Acc_value, a_param, b_param)
+    
     # ========================================================================
-    # METHOD 1: Kw Analysis
+    # METHOD 1: Kw Analysis (GENERALIZED)
     # ========================================================================
     
-    # Apply point exclusion - CORRECTED: exclude_low_T excludes from beginning, exclude_high_T excludes from end
-    n_low_m1 = exclude_low_T_method1  # Points to exclude from start (low temperatures)
-    n_high_m1 = exclude_high_T_method1  # Points to exclude from end (high temperatures)
+    # Apply point exclusion
+    n_low_m1 = exclude_low_T_method1
+    n_high_m1 = exclude_high_T_method1
     
     T_K_m1 = T_K[n_low_m1:len(T_K)-n_high_m1]
     OH_exp_m1 = OH_exp[n_low_m1:len(OH_exp)-n_high_m1]
     T_C_m1 = T_C[n_low_m1:len(T_C)-n_high_m1]
     
-    # Calculate Kw with validation
-    T_K_valid, OH_valid, Kw_valid = calculate_Kw_with_validation(
-        T_K_m1, OH_exp_m1, pH2O_value, Acc_value
+    # Calculate Kw with validation using generalized function
+    T_K_valid, OH_valid, Kw_valid = calculate_Kw_with_validation_general(
+        T_K_m1, OH_exp_m1, pH2O_value, two_a, two_b
     )
     
     if len(T_K_valid) < 3:
@@ -1066,7 +1120,7 @@ def perform_calculations(data_input_text, uploaded_file, pH2O_value, Acc_value,
     slope, intercept, r_value, p_value, std_err = stats.linregress(x_m1, ln_Kw)
     
     # Calculate parameters with errors
-    dH_method1 = -slope * R * 1000  # J/mol (hydration enthalpy, negative for exothermic)
+    dH_method1 = -slope * R * 1000  # J/mol
     dS_method1 = intercept * R      # J/(mol·K)
     
     # Errors
@@ -1076,7 +1130,7 @@ def perform_calculations(data_input_text, uploaded_file, pH2O_value, Acc_value,
     # 95% confidence intervals
     n = len(x_m1)
     if n > 2:
-        t_val = stats.t.ppf(0.975, n-2)  # t-statistic for 95% CI
+        t_val = stats.t.ppf(0.975, n-2)
         dH_ci = t_val * dH_err
         dS_ci = t_val * dS_err
     else:
@@ -1084,7 +1138,7 @@ def perform_calculations(data_input_text, uploaded_file, pH2O_value, Acc_value,
         dS_ci = 0
     
     # ========================================================================
-    # METHOD 2: Direct Fitting (curve_fit)
+    # METHOD 2: Direct Fitting (curve_fit) - GENERALIZED
     # ========================================================================
     
     # Apply point exclusion
@@ -1095,9 +1149,9 @@ def perform_calculations(data_input_text, uploaded_file, pH2O_value, Acc_value,
     OH_exp_m2 = OH_exp[n_low_m2:len(OH_exp)-n_high_m2]
     T_C_m2 = T_C[n_low_m2:len(T_C)-n_high_m2]
     
-    # Fitting function
+    # Fitting function - GENERALIZED
     def model_OH_fit(T_K_fit, dH, dS):
-        return analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, dH, dS)
+        return analytical_oh_numerical_general(T_K_fit, pH2O_value, two_a, two_b, dH, dS)
     
     try:
         # Nonlinear fitting
@@ -1136,17 +1190,17 @@ def perform_calculations(data_input_text, uploaded_file, pH2O_value, Acc_value,
         perr = [0, 0]
         dH_ci_m2 = 0
         dS_ci_m2 = 0
-        OH_model_m2 = analytical_OH_numerical(T_K_m2, pH2O_value, Acc_value, dH_method2, dS_method2)
+        OH_model_m2 = analytical_oh_numerical_general(T_K_m2, pH2O_value, two_a, two_b, dH_method2, dS_method2)
         residuals = OH_exp_m2 - OH_model_m2
     
     # ========================================================================
-    # METHOD 3: Bayesian Fitting (optional)
+    # METHOD 3: Bayesian Fitting (optional) - GENERALIZED
     # ========================================================================
     method3_results = None
     if use_bayesian_fitting and len(T_K_m2) >= 3:
         try:
-            method3_results = perform_bayesian_fitting(
-                T_K_m2, OH_exp_m2, pH2O_value, Acc_value, dH_method2, dS_method2
+            method3_results = perform_bayesian_fitting_general(
+                T_K_m2, OH_exp_m2, pH2O_value, two_a, two_b, dH_method2, dS_method2
             )
         except Exception as e:
             st.warning(f"Bayesian fitting failed: {e}")
@@ -1199,7 +1253,12 @@ def perform_calculations(data_input_text, uploaded_file, pH2O_value, Acc_value,
         },
         'parameters': {
             'pH2O': pH2O_value,
-            'Acc': Acc_value,
+            'material_type': material_type,
+            'Acc': Acc_value if material_type == 'perovskite' else None,
+            'a_param': a_param if material_type != 'perovskite' else Acc_value/2,
+            'b_param': b_param if material_type != 'perovskite' else 3 - Acc_value/2,
+            'two_a': two_a,
+            'two_b': two_b,
             'exclude_low_m1': exclude_low_T_method1,
             'exclude_high_m1': exclude_high_T_method1,
             'exclude_low_m2': exclude_low_T_method2,
@@ -1218,12 +1277,18 @@ def perform_calculations(data_input_text, uploaded_file, pH2O_value, Acc_value,
     
     return results, load_message, valid_message, data_array
 
-def create_3d_surface(results, colors, palette_design, contour_count, use_log_scale=False):
-    """Create 3D surface plot with adjustable contour count"""
+# ============================================================================
+# МОДИФИЦИРОВАННАЯ ФУНКЦИЯ ДЛЯ 3D ПОВЕРХНОСТИ
+# ============================================================================
+
+def create_3d_surface_general(results, colors, palette_design, contour_count, use_log_scale=False):
+    """
+    Create 3D surface plot with adjustable contour count - GENERALIZED
+    """
     if results is None:
         return None
     
-    # Создаем сетку для температуры и pH2O
+    # Create grid for temperature and pH2O
     T_min = min(results['data']['T_C'])
     T_max = max(results['data']['T_C'])
     T_range = np.linspace(T_min, T_max, 50)
@@ -1232,30 +1297,35 @@ def create_3d_surface(results, colors, palette_design, contour_count, use_log_sc
     pH2O_max = 1
     
     if use_log_scale:
-        # Логарифмическая шкала для pH2O
+        # Logarithmic scale for pH2O
         pH2O_range = np.logspace(np.log10(pH2O_min), np.log10(pH2O_max), 50)
         y_axis_title = 'log(pH₂O) (atm)'
     else:
-        # Линейная шкала для pH2O
+        # Linear scale for pH2O
         pH2O_range = np.linspace(pH2O_min, pH2O_max, 50)
         y_axis_title = 'pH₂O (atm)'
     
     T_grid, pH2O_grid = np.meshgrid(T_range, pH2O_range)
     
-    # Рассчитываем [OH] для каждой комбинации
+    # Get parameters
+    two_a = results['parameters']['two_a']
+    two_b = results['parameters']['two_b']
+    
+    # Calculate [OH] for each combination
     OH_grid = np.zeros_like(T_grid)
     for i in range(len(pH2O_range)):
         for j in range(len(T_range)):
             T_K_val = T_range[j] + 273.15
-            OH_grid[i, j] = analytical_OH_numerical(
+            OH_grid[i, j] = analytical_oh_numerical_general(
                 T_K_val, 
                 pH2O_range[i], 
-                results['parameters']['Acc'],
+                two_a,
+                two_b,
                 results['method2']['dH'],
                 results['method2']['dS']
             )
     
-    # Настройки палитры
+    # Palette settings
     if palette_design == 'Viridis':
         colorscale = 'Viridis'
     elif palette_design == 'Plasma':
@@ -1279,14 +1349,14 @@ def create_3d_surface(results, colors, palette_design, contour_count, use_log_sc
     else:  # 'Jet'
         colorscale = 'Jet'
     
-    # Создаем 3D поверхность
+    # Create 3D surface
     fig = go.Figure(data=[
         go.Surface(
             x=T_grid,
             y=pH2O_grid,
             z=OH_grid,
             colorscale=colorscale,
-            opacity=0.7,  # Прозрачность поверхности
+            opacity=0.7,
             showscale=True,
             contours={
                 "z": {
@@ -1302,7 +1372,7 @@ def create_3d_surface(results, colors, palette_design, contour_count, use_log_sc
         )
     ])
     
-    # Добавляем экспериментальные точки
+    # Add experimental points
     fig.add_trace(go.Scatter3d(
         x=results['data']['T_C'],
         y=[results['parameters']['pH2O']] * len(results['data']['T_C']),
@@ -1319,9 +1389,15 @@ def create_3d_surface(results, colors, palette_design, contour_count, use_log_sc
     
     scale_suffix = ' (log scale)' if use_log_scale else ' (linear scale)'
     
+    material_info = ""
+    if results['parameters']['material_type'] == 'perovskite':
+        material_info = f" (Perovskite, [Acc]={results['parameters']['Acc']:.3f})"
+    else:
+        material_info = f" (a={results['parameters']['a_param']:.3f}, b={results['parameters']['b_param']:.3f})"
+    
     fig.update_layout(
         title=dict(
-            text=f'3D Surface: [OH] = f(T, pH₂O){scale_suffix}',
+            text=f'3D Surface: [OH] = f(T, pH₂O){scale_suffix}{material_info}',
             font=dict(size=18, family='Times New Roman', color='black', weight='bold')
         ),
         scene=dict(
@@ -1367,63 +1443,17 @@ def create_3d_surface(results, colors, palette_design, contour_count, use_log_sc
     
     return fig
 
-def check_method_consistency(results):
-    """Проверка согласованности методов 1 и 2 - НОВАЯ ФУНКЦИЯ"""
-    if results is None:
-        return None
-    
-    dH1 = results['method1']['dH'] / 1000  # kJ/mol
-    dH2 = results['method2']['dH'] / 1000  # kJ/mol
-    dS1 = results['method1']['dS']
-    dS2 = results['method2']['dS']
-    
-    # Рассчитываем относительные различия
-    dH_diff_percent = abs(dH2 - dH1) / abs(dH1) * 100 if dH1 != 0 else 0
-    dS_diff = abs(dS2 - dS1)
-    
-    # Проверяем качество фитинга методом 2 через сравнение с методом 1
-    if dH_diff_percent > 15 or dS_diff > 30:
-        warning_msg = (
-            f"⚠️ **Method inconsistency detected!**\n\n"
-            f"ΔH difference: {dH_diff_percent:.1f}%\n"
-            f"ΔS difference: {dS_diff:.1f} J/(mol·K)\n\n"
-            f"This may indicate:\n"
-            f"1. Numerical instability in Method 2 fitting\n"
-            f"2. Need to adjust point exclusions\n"
-            f"3. Possible issues with data quality at extremes\n\n"
-            f"**Recommendation:** Use Method 1 results or adjust exclusions"
-        )
-    elif dH_diff_percent > 5 or dS_diff > 15:
-        warning_msg = (
-            f"ℹ️ **Moderate method inconsistency**\n\n"
-            f"ΔH difference: {dH_diff_percent:.1f}%\n"
-            f"ΔS difference: {dS_diff:.1f} J/(mol·K)\n\n"
-            f"Results are reasonably consistent but check your data."
-        )
-    else:
-        warning_msg = (
-            f"✅ **Good method consistency!**\n\n"
-            f"ΔH difference: {dH_diff_percent:.1f}%\n"
-            f"ΔS difference: {dS_diff:.1f} J/(mol·K)"
-        )
-    
-    return {
-        'dH1': dH1,
-        'dH2': dH2,
-        'dS1': dS1,
-        'dS2': dS2,
-        'dH_diff_percent': dH_diff_percent,
-        'dS_diff': dS_diff,
-        'message': warning_msg
-    }
-
 # ============================================================================
-# MAIN APPLICATION
+# MAIN APPLICATION - ОБНОВЛЕННЫЙ ИНТЕРФЕЙС
 # ============================================================================
 
 st.title("🔬 Hydration Thermodynamics Analysis")
 st.markdown("""
-*Thermodynamic analysis of AB₁₋ₓAccₓO₃₋ₓ/₂ based on proton concentration temperature profile*
+*Thermodynamic analysis of proton-conducting oxides based on proton concentration temperature profile*
+
+**Supported materials:**
+- Perovskites (ABO₃) with acceptor doping
+- Custom materials with user-defined a and b parameters
 """)
 
 # Sidebar
@@ -1458,6 +1488,16 @@ with st.sidebar:
     
     # System parameters
     st.subheader("System Parameters")
+    
+    # НОВО: Выбор типа материала
+    material_type = st.radio(
+        "Material type:",
+        ["Perovskite (ABO₃)", "Custom (a, b)"],
+        index=0,
+        key="material_type",
+        help="Perovskite: uses [Acc] parameter. Custom: uses structural vacancies (a) and oxygen count (b)"
+    )
+    
     pH2O_value = st.number_input(
         'pH₂O (atm):',
         min_value=1e-5,
@@ -1468,16 +1508,48 @@ with st.sidebar:
         key="pH2O_input"
     )
     
-    Acc_value = st.number_input(
-        '[Acc] = x:',
-        min_value=0.01,
-        max_value=1.00,
-        value=st.session_state.default_params['Acc'],
-        step=0.01,
-        format="%.3f",
-        help="Acceptor dopant concentration (0 < x < 1)",
-        key="Acc_input"
-    )
+    # НОВО: Условный ввод параметров в зависимости от типа материала
+    if material_type == "Perovskite (ABO₃)":
+        Acc_value = st.number_input(
+            '[Acc] = x:',
+            min_value=0.01,
+            max_value=1.00,
+            value=st.session_state.default_params['Acc'],
+            step=0.01,
+            format="%.3f",
+            help="Acceptor dopant concentration for perovskite AB₁₋ₓAccₓO₃₋ₓ/₂ (0 < x < 1)",
+            key="Acc_input"
+        )
+        # Для перовскитов a и b вычисляются автоматически
+        a_param = Acc_value / 2
+        b_param = 3 - Acc_value / 2
+        st.info(f"Calculated: a = {a_param:.3f}, b = {b_param:.3f}")
+    else:
+        # Для кастомных материалов пользователь вводит a и b напрямую
+        col_a, col_b = st.columns(2)
+        with col_a:
+            a_param = st.number_input(
+                'a (structural vacancies):',
+                min_value=0.0,
+                max_value=10.0,
+                value=st.session_state.default_params['a_param'],
+                step=0.01,
+                format="%.3f",
+                help="Number of structural vacancies in anhydrous state",
+                key="a_input"
+            )
+        with col_b:
+            b_param = st.number_input(
+                'b (oxygen atoms):',
+                min_value=0.1,
+                max_value=20.0,
+                value=st.session_state.default_params['b_param'],
+                step=0.01,
+                format="%.3f",
+                help="Number of oxygen atoms in formula unit",
+                key="b_input"
+            )
+        Acc_value = None  # Не используется для кастомных материалов
     
     # Parse data to determine number of points
     data_array, _ = parse_input_data(data_input_text, uploaded_file)
@@ -1597,6 +1669,9 @@ with st.sidebar:
         st.session_state.default_params = {
             'pH2O': 0.03,
             'Acc': 0.2,
+            'material_type': 'perovskite',
+            'a_param': 0.1,
+            'b_param': 2.9,
             'data': """20 0.15
 100 0.12
 200 0.10
@@ -1613,13 +1688,27 @@ with st.sidebar:
     st.markdown("---")
     st.markdown(f"**Total data points:** {n_total_points}")
     st.markdown(f"**Max exclusions:** {max_exclusion} points")
-    st.markdown("**Version:** 2.4 | **Updated:** 2024")
+    
+    # Показываем текущие параметры модели
+    two_a, two_b = calculate_2a_and_2b(
+        'perovskite' if material_type == "Perovskite (ABO₃)" else 'custom',
+        Acc_value if material_type == "Perovskite (ABO₃)" else 0,
+        a_param if material_type != "Perovskite (ABO₃)" else 0,
+        b_param if material_type != "Perovskite (ABO₃)" else 0
+    )
+    st.markdown(f"**2a = {two_a:.3f}**")
+    st.markdown(f"**2b = {two_b:.3f}**")
+    st.markdown("**Version:** 3.0 | **Updated:** 2024")
 
 # Main calculation and display
 if n_total_points > 0:
-    # Perform calculations
-    results, load_message, valid_message, data_array = perform_calculations(
-        data_input_text, uploaded_file, pH2O_value, Acc_value,
+    # Perform calculations using generalized function
+    results, load_message, valid_message, data_array = perform_calculations_general(
+        data_input_text, uploaded_file, pH2O_value,
+        'perovskite' if material_type == "Perovskite (ABO₃)" else 'custom',
+        Acc_value if material_type == "Perovskite (ABO₃)" else 0,
+        a_param if material_type != "Perovskite (ABO₃)" else 0,
+        b_param if material_type != "Perovskite (ABO₃)" else 0,
         exclude_low_T_method1, exclude_high_T_method1,
         exclude_low_T_method2, exclude_high_T_method2,
         use_bayesian_fitting, colors, contour_count, residuals_palette, palette_design
@@ -1785,7 +1874,9 @@ if n_total_points > 0:
             export_data = {
                 'parameters': {
                     'pH2O': results['parameters']['pH2O'],
-                    'Acc': results['parameters']['Acc'],
+                    'material_type': results['parameters']['material_type'],
+                    'two_a': float(results['parameters']['two_a']),
+                    'two_b': float(results['parameters']['two_b']),
                     'temperature_unit': 'Celsius'
                 },
                 'method1': {
@@ -1816,6 +1907,13 @@ if n_total_points > 0:
                     'palette_design': palette_design
                 }
             }
+            
+            # Add material-specific parameters
+            if results['parameters']['material_type'] == 'perovskite':
+                export_data['parameters']['Acc'] = float(results['parameters']['Acc'])
+            else:
+                export_data['parameters']['a_param'] = float(results['parameters']['a_param'])
+                export_data['parameters']['b_param'] = float(results['parameters']['b_param'])
             
             # Add Method 3 if available
             if 'method3' in results and results['method3']['success']:
@@ -1863,16 +1961,19 @@ if n_total_points > 0:
                 showlegend=True
             ))
             
-            # Add physical boundaries
+            # Add physical boundaries based on material type
+            two_a = results['parameters']['two_a']
+            two_b = results['parameters']['two_b']
+            oh_limit = min(two_a, two_b)
+            
             fig1.add_hline(
-                y=Acc_value, 
+                y=oh_limit, 
                 line=dict(color='red', width=1, dash='dash'),
-                annotation_text=f'[Acc] = {Acc_value:.3f}',
+                annotation_text=f'Max [OH] = {oh_limit:.3f}',
                 annotation_position="top right",
                 annotation_font=dict(size=12, color='red')
             )
             
-            # Опускаем легенду ниже, чтобы не пересекалась с линией [Acc]
             fig1.update_layout(
                 legend=dict(
                     font=dict(
@@ -1883,8 +1984,8 @@ if n_total_points > 0:
                     bordercolor='black',
                     borderwidth=1,
                     bgcolor='rgba(255,255,255,0.9)',
-                    x=0.98,  # Оставляем справа
-                    y=0.85,  # спуск легенды
+                    x=0.98,
+                    y=0.85,
                     xanchor='right',
                     yanchor='top'
                 )
@@ -1932,7 +2033,6 @@ if n_total_points > 0:
                 showlegend=True
             ))
             
-            # Перемещаем легенду в левый верхний угол
             fig2.update_layout(
                 legend=dict(
                     font=dict(
@@ -1943,9 +2043,9 @@ if n_total_points > 0:
                     bordercolor='black',
                     borderwidth=1,
                     bgcolor='rgba(255,255,255,0.9)',
-                    x=0.02,  # ИЗМЕНЕНИЕ: Было 0.98, стало 0.02 (слева)
-                    y=0.98,  # Оставляем сверху
-                    xanchor='left',  # ИЗМЕНЕНИЕ: Было 'right', стало 'left'
+                    x=0.02,
+                    y=0.98,
+                    xanchor='left',
                     yanchor='top'
                 )
             )
@@ -1966,8 +2066,15 @@ if n_total_points > 0:
             # Top plot: Model fit
             T_fit = np.linspace(min(results['data']['T_C']), max(results['data']['T_C']), 200)
             T_K_fit = T_fit + 273.15
-            OH_fit = analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, 
-                                            results['method2']['dH'], results['method2']['dS'])
+            
+            # Get parameters for generalized model
+            two_a = results['parameters']['two_a']
+            two_b = results['parameters']['two_b']
+            
+            OH_fit = analytical_oh_numerical_general(
+                T_K_fit, pH2O_value, two_a, two_b,
+                results['method2']['dH'], results['method2']['dS']
+            )
             
             # Add model curve
             fig3.add_trace(go.Scatter(
@@ -1982,7 +2089,7 @@ if n_total_points > 0:
                 showlegend=True
             ), row=1, col=1)
             
-            # Добавляем экспериментальные точки в верхний график
+            # Add experimental points to top plot
             fig3.add_trace(go.Scatter(
                 x=results['method2']['T_C'],
                 y=results['method2']['OH_exp'],
@@ -1997,13 +2104,13 @@ if n_total_points > 0:
                 showlegend=True
             ), row=1, col=1)
             
-            # Bottom plot: Residuals с выбранной палитрой
+            # Bottom plot: Residuals with selected palette
             residuals = results['method2']['residuals']
             if len(residuals) > 0:
                 abs_residuals = np.abs(residuals)
                 max_abs = np.max(abs_residuals) if np.max(abs_residuals) > 0 else 1.0
                 
-                # Настраиваем палитру для остатков
+                # Configure palette for residuals
                 residuals_colorscale = residuals_palette
                 if residuals_palette == 'Portland':
                     residuals_colorscale = [[0, 'rgb(12,51,131)'], [0.25, 'rgb(10,136,186)'], 
@@ -2014,18 +2121,18 @@ if n_total_points > 0:
                                           [0.4, 'rgb(0,255,255)'], [0.6, 'rgb(0,255,0)'], 
                                           [0.8, 'rgb(255,255,0)'], [1, 'rgb(255,0,0)']]
                 
-                # Добавляем остатки с цветом по величине
+                # Add residuals with color by magnitude
                 fig3.add_trace(go.Scatter(
                     x=results['method2']['T_C'],
                     y=results['method2']['residuals'],
                     mode='markers',
                     marker=dict(
                         size=PUBLICATION_STYLE['marker_size'] - 2,
-                        color=abs_residuals,  # Используем числовые значения
+                        color=abs_residuals,
                         colorscale=residuals_colorscale,
                         cmin=0,
                         cmax=max_abs,
-                        showscale=True,  # Показываем цветовую шкалу
+                        showscale=True,
                         colorbar=dict(
                             title="|Residual|",
                             title_font=dict(
@@ -2046,7 +2153,7 @@ if n_total_points > 0:
                     showlegend=False
                 ), row=2, col=1)
             else:
-                # Fallback если нет остатков
+                # Fallback if no residuals
                 fig3.add_trace(go.Scatter(
                     x=results['method2']['T_C'],
                     y=results['method2']['residuals'],
@@ -2081,11 +2188,6 @@ if n_total_points > 0:
             st.markdown("---")
             st.markdown(f"#### Residuals Palette")
             st.markdown(f"**{residuals_palette}**")
-            
-            # Show palette preview
-            if residuals_palette in ['RdBu_r', 'Viridis', 'Plasma', 'Inferno', 'Magma', 'Cividis', 'Rainbow', 'Jet']:
-                # Built-in palette
-                st.markdown("![Color palette](https://plotly.com/javascript/images/color-scales/plotly_js_$palette.png)".replace("$palette", residuals_palette.lower()), unsafe_allow_html=True)
         
         # 4. Method Comparison
         st.markdown("### Comparison of Methods")
@@ -2098,10 +2200,16 @@ if n_total_points > 0:
                 "[OH]"
             )
             
-            # Method 1 curve (только если выбрано в виджете)
+            # Get parameters for generalized model
+            two_a = results['parameters']['two_a']
+            two_b = results['parameters']['two_b']
+            
+            # Method 1 curve
             if show_method1_comparison:
-                OH_fit_m1 = analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, 
-                                                  results['method1']['dH'], results['method1']['dS'])
+                OH_fit_m1 = analytical_oh_numerical_general(
+                    T_K_fit, pH2O_value, two_a, two_b,
+                    results['method1']['dH'], results['method1']['dS']
+                )
                 
                 fig4.add_trace(go.Scatter(
                     x=T_fit,
@@ -2116,12 +2224,13 @@ if n_total_points > 0:
                     showlegend=True
                 ))
             
-            # Method 2 curve (только если выбрано в виджете)
+            # Method 2 curve
             if show_method2_comparison:
-                OH_fit_m2 = analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, 
-                                                  results['method2']['dH'], results['method2']['dS'])
+                OH_fit_m2 = analytical_oh_numerical_general(
+                    T_K_fit, pH2O_value, two_a, two_b,
+                    results['method2']['dH'], results['method2']['dS']
+                )
                 
-                # Определяем легенду в зависимости от видимости Method 1
                 if show_method1_comparison:
                     legend_name = f'Method 2: ΔH_hydr = {results["method2"]["dH"]/1000:.1f} kJ/mol'
                 else:
@@ -2139,10 +2248,12 @@ if n_total_points > 0:
                     showlegend=True
                 ))
             
-            # Method 3 curve (только если выбрано в виджете и доступно)
+            # Method 3 curve
             if show_method3_comparison and 'method3' in results and results['method3']['success']:
-                OH_fit_m3 = analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, 
-                                                  results['method3']['dH'], results['method3']['dS'])
+                OH_fit_m3 = analytical_oh_numerical_general(
+                    T_K_fit, pH2O_value, two_a, two_b,
+                    results['method3']['dH'], results['method3']['dS']
+                )
                 
                 fig4.add_trace(go.Scatter(
                     x=T_fit,
@@ -2157,7 +2268,7 @@ if n_total_points > 0:
                     showlegend=True
                 ))
             
-            # Experimental points (только если выбрано в виджете)
+            # Experimental points
             if show_experimental_comparison:
                 fig4.add_trace(go.Scatter(
                     x=results['data']['T_C'],
@@ -2174,7 +2285,7 @@ if n_total_points > 0:
                     showlegend=True
                 ))
             
-            # Если ничего не выбрано, показываем сообщение
+            # If nothing selected, show message
             if not (show_method1_comparison or show_method2_comparison or show_method3_comparison or show_experimental_comparison):
                 fig4.add_annotation(
                     x=0.5,
@@ -2196,7 +2307,7 @@ if n_total_points > 0:
                 "ln(Kw)"
             )
             
-            # Calculate Kw for both methods
+            # Calculate Kw for both methods using generalized model
             Kw_m1 = np.exp(-results['method1']['dH']/(R * T_K_fit) + results['method1']['dS']/R)
             Kw_m2 = np.exp(-results['method2']['dH']/(R * T_K_fit) + results['method2']['dS']/R)
             
@@ -2259,19 +2370,19 @@ if n_total_points > 0:
             
             st.plotly_chart(fig5, use_container_width=False)
         
-        # 6. 3D Surface Plots (оба варианта)
+        # 6. 3D Surface Plots (both variants) - USING GENERALIZED FUNCTION
         st.markdown("### 3D Surface Plots")
         col7, col8 = st.columns(2)
         
         with col7:
             st.markdown("#### Linear pH₂O Scale")
-            fig6_linear = create_3d_surface(results, colors, palette_design, contour_count, use_log_scale=False)
+            fig6_linear = create_3d_surface_general(results, colors, palette_design, contour_count, use_log_scale=False)
             if fig6_linear:
                 st.plotly_chart(fig6_linear, use_container_width=True)
         
         with col8:
             st.markdown("#### Logarithmic pH₂O Scale")
-            fig6_log = create_3d_surface(results, colors, palette_design, contour_count, use_log_scale=True)
+            fig6_log = create_3d_surface_general(results, colors, palette_design, contour_count, use_log_scale=True)
             if fig6_log:
                 st.plotly_chart(fig6_log, use_container_width=True)
         
@@ -2348,8 +2459,16 @@ if n_total_points > 0:
             else:
                 st.info(rec)
         
-        # Final recommendations
+        # Final recommendations with material-specific info
+        material_info = ""
+        if results['parameters']['material_type'] == 'perovskite':
+            material_info = f"Perovskite AB₁₋ₓAccₓO₃₋ₓ/₂ with [Acc] = {results['parameters']['Acc']:.3f}"
+        else:
+            material_info = f"Custom material with a = {results['parameters']['a_param']:.3f}, b = {results['parameters']['b_param']:.3f}"
+        
         st.info(f"""
+        **Material analyzed:** {material_info}
+        
         **For publications:**
         - Method 1: ΔH_hydr° = {results['method1']['dH']/1000:.1f} ± {results['method1']['dH_ci']/1000:.2f} kJ/mol
         - Method 2: ΔH_hydr° = {results['method2']['dH']/1000:.1f} ± {results['method2']['dH_ci']/1000:.2f} kJ/mol
@@ -2372,12 +2491,18 @@ else:
     ## 📖 Instructions
     
     1. **Load data** in text field or choose file (CSV, TXT, Excel)
-    2. **Set system parameters**: pH₂O and acceptor concentration [Acc]
-    3. **Configure fitting**: exclude extreme points if necessary
-    4. **Graphs update automatically** when parameters change
+    2. **Select material type**:
+       - Perovskite (ABO₃): enter [Acc] concentration
+       - Custom: enter a (structural vacancies) and b (oxygen atoms)
+    3. **Set system parameters**: pH₂O and material-specific parameters
+    4. **Configure fitting**: exclude extreme points if necessary
+    5. **Graphs update automatically** when parameters change
     
-    ## 🎯 Key Features - Version 2.4
+    ## 🎯 Key Features - Version 3.0
     
+    ✅ **Generalized thermodynamic model** for various materials  
+    ✅ **Perovskite mode** (default) with [Acc] parameter  
+    ✅ **Custom mode** with a and b parameters for complex oxides  
     ✅ **Real-time calculation** - no calculate button needed  
     ✅ **Reliable numerical solution** instead of analytical formulas  
     ✅ **Errors and confidence intervals** for all parameters  
@@ -2402,26 +2527,21 @@ else:
     ## 📊 Data Format
     
     Supported formats:
-    ```
-    Temperature [OH]         # Separator: space
-    20.5;0.15               # Separator: semicolon
-    300\t0.08              # Separator: tab
-    ```
+    Temperature [OH] # Separator: space
+    20.5;0.15 # Separator: semicolon
+    300\t0.08 # Separator: tab
     
     **Units:**
     - Temperature: °C
     - [OH] concentration: dimensionless (relative)
     - pH₂O: atmospheres (atm)
-    - [Acc]: dimensionless (0 < x < 6)
+    - [Acc]: dimensionless (0 < x < 1)
+    - a, b: dimensionless (structural parameters)
     - ΔH_hydr°: hydration enthalpy (kJ/mol, negative for exothermic)
-    
-    **Note:** Experimental data may show constant or slightly increasing [OH] with temperature within measurement error.
     """)
-
-# Information
-st.markdown("---")
-st.markdown("*Application automatically updates calculations when parameters change*")
-st.markdown("**Note on Bayesian fitting:** Requires PyMC and ArviZ packages. Install with: `pip install pymc arviz`")
-
-
+    
+    # Information
+    st.markdown("---")
+    st.markdown("*Application automatically updates calculations when parameters change*")
+    st.markdown("**Note on Bayesian fitting:** Requires PyMC and ArviZ packages. Install with: `pip install pymc arviz`")
 
