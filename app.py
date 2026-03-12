@@ -566,8 +566,15 @@ def parse_input_data(input_text, file_uploader=None):
     
     return np.array(data), f"Loaded {len(data)} points from text"
 
-def validate_input_data(data_array, Acc):
-    """Validate input data - REMOVED monotonicity check"""
+def validate_input_data(data_array, material_type, Acc=None, two_a=None, two_b=None):
+    """
+    Validate input data - UPDATED for generalized model
+    Parameters:
+        data_array: numpy array with temperature and [OH] data
+        material_type: 'perovskite' or 'custom'
+        Acc: acceptor concentration (for perovskite mode)
+        two_a, two_b: calculated parameters (for custom mode)
+    """
     if data_array is None or len(data_array) == 0:
         return False, "No data for analysis"
     
@@ -582,11 +589,20 @@ def validate_input_data(data_array, Acc):
     if np.any(T_C > 3000):
         issues.append("Suspiciously high temperatures (>3000°C)")
     
-    # Concentration check
+    # Concentration checks
     if np.any(OH <= 0):
         issues.append("Non-positive [OH] concentrations found")
-    if np.any(OH >= Acc):
-        issues.append("[OH] concentrations ≥ [Acc] found (physically impossible)")
+    
+    # Material-specific physical limits
+    if material_type == 'perovskite' and Acc is not None:
+        # For perovskite: [OH] cannot exceed [Acc]
+        if np.any(OH >= Acc):
+            issues.append(f"[OH] concentrations ≥ [Acc]={Acc:.3f} found (physically impossible)")
+    elif material_type == 'custom' and two_a is not None and two_b is not None:
+        # For custom materials: [OH] cannot exceed min(2a, 2b)
+        oh_max = min(two_a, two_b)
+        if np.any(OH >= oh_max):
+            issues.append(f"[OH] concentrations ≥ min(2a,2b)={oh_max:.3f} found (physically impossible)")
     
     # Check for NaN or infinite values
     if np.any(np.isnan(T_C)) or np.any(np.isnan(OH)):
@@ -1071,14 +1087,23 @@ def perform_calculations_general(data_input_text, uploaded_file, pH2O_value,
     # Parse and validate data
     data_array, load_message = parse_input_data(data_input_text, uploaded_file)
     
-    # For perovskite, use Acc_value for validation
+    # Calculate 2a and 2b for validation
+    two_a_val, two_b_val = calculate_2a_and_2b(material_type, Acc_value, a_param, b_param)
+    
+    # Use improved validation function
     if material_type == 'perovskite':
-        is_valid, valid_message = validate_input_data(data_array, Acc_value)
+        is_valid, valid_message = validate_input_data(
+            data_array, 
+            material_type='perovskite',
+            Acc=Acc_value
+        )
     else:
-        # For custom materials, use min(two_a, two_b)/2 as approximate limit for validation
-        two_a, two_b = calculate_2a_and_2b(material_type, Acc_value, a_param, b_param)
-        approx_limit = min(two_a, two_b) / 2
-        is_valid, valid_message = validate_input_data(data_array, approx_limit)
+        is_valid, valid_message = validate_input_data(
+            data_array, 
+            material_type='custom',
+            two_a=two_a_val,
+            two_b=two_b_val
+        )
     
     if not is_valid:
         return None, f"Validation error: {valid_message}", None, None
@@ -2544,4 +2569,5 @@ else:
     st.markdown("---")
     st.markdown("*Application automatically updates calculations when parameters change*")
     st.markdown("**Note on Bayesian fitting:** Requires PyMC and ArviZ packages. Install with: `pip install pymc arviz`")
+
 
