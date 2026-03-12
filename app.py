@@ -98,16 +98,21 @@ if 'default_params' not in st.session_state:
     }
 
 # ============================================================================
-# NUMERICAL FUNCTIONS
+# NUMERICAL FUNCTIONS - ИСПРАВЛЕНО НА ОСНОВЕ ВАШИХ ДАННЫХ
 # ============================================================================
 
 @st.cache_data(ttl=300)
 def calculate_equilibrium_oh(K, Acc, pH2O):
-    """Numerical solution for equilibrium [OH] concentration - ИСПРАВЛЕНО"""
+    """Numerical solution for equilibrium [OH] concentration - ИСПРАВЛЕНО на основе вашей формулы"""
     if K <= 0 or pH2O <= 0 or Acc <= 0:
         return np.nan
     
+    # Ваше уравнение: [OH] = [3Kwp*pH2O - (Kwp*pH2O*{9Kwp*pH2O - 6Kwp*pH2O*[Acc] + Kwp*pH2O*[Acc]^2 + 24[Acc] - 4[Acc]^2})^0.5] / (Kw*pH2O - 4)
+    # где Kw = K (константа равновесия)
+    
     def f(oh):
+        # Исходное уравнение: Kw = 4[OH]^2 / (pH2O * ([Acc] - [OH]) * (6 - [Acc] - [OH]))
+        # Преобразуем к виду: 4[OH]^2 - Kw * pH2O * ([Acc] - [OH]) * (6 - [Acc] - [OH]) = 0
         return 4 * oh**2 - K * pH2O * (Acc - oh) * (6 - Acc - oh)
     
     # Физически допустимый диапазон для [OH]
@@ -185,56 +190,78 @@ def calculate_equilibrium_oh(K, Acc, pH2O):
             return np.nan
 
 def analytical_OH_numerical(T_K, pH2O, Acc, dH, dS):
-    """Analytical expression for [OH] with numerical solution - ИСПРАВЛЕНО"""
-    # Рассчитываем Kw
+    """Calculate [OH] using the analytical solution from your equation"""
+    # Рассчитываем Kw из термодинамических параметров
+    # Kw = exp(-dH/(R*T) + dS/R)
     Kw = np.exp(-dH/(R * T_K) + dS/R)
-    K = Kw * pH2O
     
     # Для скалярного входа
     if isinstance(T_K, (int, float)):
-        return calculate_equilibrium_oh(K, Acc, pH2O)
+        return calculate_equilibrium_oh(Kw, Acc, pH2O)
     
     # Для массивов
-    results = np.zeros_like(K, dtype=float)
-    for i in range(len(K)):
+    results = np.zeros_like(T_K, dtype=float)
+    for i, t in enumerate(T_K):
+        Kw_val = np.exp(-dH/(R * t) + dS/R)
+        
         # Проверяем физическую допустимость
-        if K[i] <= 0 or Acc <= 0 or pH2O <= 0:
+        if Kw_val <= 0 or Acc <= 0 or pH2O <= 0:
             results[i] = np.nan
             continue
             
         # Рассчитываем [OH]
-        oh_val = calculate_equilibrium_oh(K[i], Acc, pH2O)
+        oh_val = calculate_equilibrium_oh(Kw_val, Acc, pH2O)
         
-        # Если численное решение не удалось, пробуем аппроксимацию
+        # Если численное решение не удалось, пробуем прямое аналитическое решение
         if np.isnan(oh_val):
-            # Используем приближенную формулу для начального приближения
             try:
-                # Квадратичное приближение для малых [OH]
-                if K[i] * pH2O < 1e-6:
-                    oh_val = np.sqrt(K[i] * pH2O * Acc * (6 - Acc) / 4)
-                else:
-                    oh_val = Acc * 0.5  # разумное приближение
+                # Прямое аналитическое решение из вашей формулы:
+                # [OH] = [3Kw*pH2O - sqrt(Kw*pH2O*(9Kw*pH2O - 6Kw*pH2O*Acc + Kw*pH2O*Acc^2 + 24Acc - 4Acc^2))] / (Kw*pH2O - 4)
                 
-                # Проверяем границы
-                oh_val = max(1e-12, min(oh_val, Acc - 1e-12))
+                Kp = Kw_val * pH2O
+                
+                # Проверяем, что знаменатель не близок к нулю
+                if abs(Kp - 4) < 1e-10:
+                    results[i] = np.nan
+                    continue
+                
+                # Вычисляем подкоренное выражение
+                sqrt_term = Kp * (9*Kp - 6*Kp*Acc + Kp*Acc**2 + 24*Acc - 4*Acc**2)
+                
+                if sqrt_term < 0:
+                    results[i] = np.nan
+                    continue
+                
+                sqrt_val = np.sqrt(sqrt_term)
+                
+                oh_analytical = (3*Kp - sqrt_val) / (Kp - 4)
+                
+                # Проверяем физичность
+                oh_max = min(Acc, 6 - Acc)
+                if 0 <= oh_analytical <= oh_max:
+                    results[i] = oh_analytical
+                else:
+                    results[i] = np.nan
+                    
             except:
-                oh_val = np.nan
-        
-        results[i] = oh_val
+                results[i] = np.nan
+        else:
+            results[i] = oh_val
     
     return results
 
 def calculate_Kw_with_validation(T_K, OH, pH2O, Acc):
-    """Calculate Kw with data validation - ИСПРАВЛЕНО"""
+    """Calculate Kw from experimental data using your formula: Kw = 4[OH]^2/(pH2O*([Acc]-[OH])*(6-[Acc]-[OH]))"""
+    
     # Физические ограничения
     # [OH] должен быть строго между 0 и Acc, и не превышать (6-Acc)
     oh_max = min(Acc, 6 - Acc)
     
     mask_valid = (
         (OH > 1e-12) & 
-        (OH < oh_max - 1e-12) &  # Используем min(Acc, 6-Acc)
+        (OH < oh_max - 1e-12) &
         (T_K > 0) &
-        (T_K < 2000) &  # Разумный верхний предел температуры
+        (T_K < 2000) &
         (pH2O > 1e-10) & (pH2O < 10) &
         (Acc > 1e-6) & (Acc < 6 - 1e-6)
     )
@@ -245,7 +272,7 @@ def calculate_Kw_with_validation(T_K, OH, pH2O, Acc):
     T_K_valid = T_K[mask_valid]
     OH_valid = OH[mask_valid]
     
-    # Расчет Kw с защитой от деления на ноль
+    # Расчет Kw по вашей формуле: Kw = 4[OH]^2/(pH2O*([Acc]-[OH])*(6-[Acc]-[OH]))
     denominator = pH2O * (Acc - OH_valid) * (6 - Acc - OH_valid)
     
     # Защита от слишком малых знаменателей
@@ -266,7 +293,6 @@ def calculate_Kw_with_validation(T_K, OH, pH2O, Acc):
     Kw_final = numerator / denominator_final
     
     # Дополнительная фильтрация нефизичных значений Kw
-    # Kw должен быть положительным и не экстремальным
     mask_reasonable = (
         (Kw_final > 1e-20) & 
         (Kw_final < 1e20) &
@@ -283,7 +309,7 @@ def calculate_Kw_with_validation(T_K, OH, pH2O, Acc):
     )
 
 # ============================================================================
-# BAYESIAN FITTING FUNCTIONS
+# BAYESIAN FITTING FUNCTIONS - ИСПРАВЛЕНО
 # ============================================================================
 
 def perform_bayesian_fitting(T_K, OH_exp, pH2O_value, Acc_value, dH_init, dS_init):
@@ -295,17 +321,18 @@ def perform_bayesian_fitting(T_K, OH_exp, pH2O_value, Acc_value, dH_init, dS_ini
         
         # Define Bayesian model
         with pm.Model() as model:
-            # Priors
-            dH = pm.Normal('dH', mu=dH_init, sigma=abs(dH_init)*0.5)
-            dS = pm.Normal('dS', mu=dS_init, sigma=abs(dS_init)*0.5)
+            # Priors based on typical values from your data
+            # Для ваших данных: dH ≈ -92.5 kJ/mol, dS ≈ -128.3 J/(mol·K)
+            dH = pm.Normal('dH', mu=dH_init, sigma=abs(dH_init)*0.3)
+            dS = pm.Normal('dS', mu=dS_init, sigma=abs(dS_init)*0.3)
             
-            # Expected value
+            # Expected value using the analytical solution
             OH_pred = pm.Deterministic('OH_pred', 
                 analytical_OH_numerical(T_K, pH2O_value, Acc_value, dH, dS)
             )
             
-            # Likelihood
-            sigma = pm.HalfNormal('sigma', sigma=0.01)
+            # Likelihood with adaptive sigma
+            sigma = pm.HalfNormal('sigma', sigma=0.05)
             likelihood = pm.Normal('likelihood', mu=OH_pred, sigma=sigma, observed=OH_exp)
         
         # Sample
@@ -357,7 +384,6 @@ def perform_bayesian_fitting(T_K, OH_exp, pH2O_value, Acc_value, dH_init, dS_ini
         }
         
     except ImportError as e:
-        # PyMC not available, use simple bootstrap method
         st.warning(f"PyMC not available: {e}. Using bootstrap method for Bayesian intervals.")
         return perform_bootstrap_fitting(T_K, OH_exp, pH2O_value, Acc_value, dH_init, dS_init)
     except Exception as e:
@@ -366,7 +392,7 @@ def perform_bayesian_fitting(T_K, OH_exp, pH2O_value, Acc_value, dH_init, dS_ini
 
 def perform_bootstrap_fitting(T_K, OH_exp, pH2O_value, Acc_value, dH_init, dS_init):
     """Simple bootstrap method for uncertainty estimation"""
-    n_bootstrap = 100
+    n_bootstrap = 200  # Увеличиваем для лучшей статистики
     n_points = len(T_K)
     
     dH_samples = []
@@ -379,7 +405,7 @@ def perform_bootstrap_fitting(T_K, OH_exp, pH2O_value, Acc_value, dH_init, dS_in
         OH_boot = OH_exp[indices]
         
         try:
-            # Fit to resampled data
+            # Fit to resampled data using curve_fit
             def model_OH_fit(T_K_fit, dH, dS):
                 return analytical_OH_numerical(T_K_fit, pH2O_value, Acc_value, dH, dS)
             
@@ -389,7 +415,7 @@ def perform_bootstrap_fitting(T_K, OH_exp, pH2O_value, Acc_value, dH_init, dS_in
                 OH_boot,
                 p0=[dH_init, dS_init],
                 bounds=([-500000, -500], [0, 500]),
-                maxfev=5000
+                maxfev=10000
             )
             
             dH_samples.append(popt[0])
@@ -397,20 +423,23 @@ def perform_bootstrap_fitting(T_K, OH_exp, pH2O_value, Acc_value, dH_init, dS_in
         except:
             continue
     
-    if len(dH_samples) < 10:
+    if len(dH_samples) < 20:
         # Not enough successful fits, return simple results
+        OH_model = analytical_OH_numerical(T_K, pH2O_value, Acc_value, dH_init, dS_init)
+        residuals = OH_exp - OH_model
+        
         return {
             'success': False,
             'dH': dH_init,
-            'dH_hdi_low': dH_init - abs(dH_init)*0.1,
-            'dH_hdi_high': dH_init + abs(dH_init)*0.1,
+            'dH_hdi_low': dH_init - abs(dH_init)*0.15,
+            'dH_hdi_high': dH_init + abs(dH_init)*0.15,
             'dS': dS_init,
-            'dS_hdi_low': dS_init - abs(dS_init)*0.1,
-            'dS_hdi_high': dS_init + abs(dS_init)*0.1,
+            'dS_hdi_low': dS_init - abs(dS_init)*0.15,
+            'dS_hdi_high': dS_init + abs(dS_init)*0.15,
             'R2': 0,
             'RMSE': 0,
-            'OH_model': analytical_OH_numerical(T_K, pH2O_value, Acc_value, dH_init, dS_init),
-            'residuals': OH_exp - analytical_OH_numerical(T_K, pH2O_value, Acc_value, dH_init, dS_init)
+            'OH_model': OH_model,
+            'residuals': residuals
         }
     
     # Calculate percentiles
@@ -443,7 +472,7 @@ def perform_bootstrap_fitting(T_K, OH_exp, pH2O_value, Acc_value, dH_init, dS_in
         'OH_model': OH_model_boot,
         'residuals': residuals_boot
     }
-
+    
 # ============================================================================
 # DATA PROCESSING FUNCTIONS
 # ============================================================================
@@ -2393,5 +2422,6 @@ else:
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
 st.markdown("**Note on Bayesian fitting:** Requires PyMC and ArviZ packages. Install with: `pip install pymc arviz`")
+
 
 
