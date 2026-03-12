@@ -151,22 +151,36 @@ def calculate_equilibrium_oh(K, Acc, pH2O):
         except:
             return np.nan
 
-def analytical_OH_numerical(T_K, pH2O, Acc, dH, dS):
-    """Analytical expression for [OH] with numerical solution"""
-    # Calculate Kw
+def analytical_OH_numerical_corrected(T_K, pH2O, Acc, dH, dS):
+    """
+    Правильная модель для расчета [OH] по термодинамическим параметрам
+    """
+    # Kw из термодинамических параметров
     Kw = np.exp(-dH/(R * T_K) + dS/R)
-    K = Kw * pH2O
     
-    # Scalar input
+    # Для каждого значения температуры решаем уравнение
+    def solve_for_oh(kw_val):
+        if kw_val <= 0:
+            return np.nan
+        
+        def f(oh):
+            return 4 * oh**2 - kw_val * (Acc - oh) * (6 - Acc - oh)
+        
+        try:
+            sol = root_scalar(
+                f,
+                bracket=[1e-12, Acc - 1e-12],
+                method='brentq'
+            )
+            return sol.root if sol.converged else np.nan
+        except:
+            return np.nan
+    
+    # Векторизованное решение
     if isinstance(T_K, (int, float)):
-        return calculate_equilibrium_oh(K, Acc, pH2O)
-    
-    # Array input
-    results = np.zeros_like(K)
-    for i in range(len(K)):
-        results[i] = calculate_equilibrium_oh(K[i], Acc, pH2O)
-    
-    return results
+        return solve_for_oh(Kw)
+    else:
+        return np.array([solve_for_oh(kw) for kw in Kw])
 
 def calculate_Kw_with_validation(T_K, OH, pH2O, Acc):
     """Calculate Kw with data validation"""
@@ -2273,4 +2287,5 @@ else:
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
 st.markdown("**Note on Bayesian fitting:** Requires PyMC and ArviZ packages. Install with: `pip install pymc arviz`")
+
 
