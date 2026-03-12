@@ -151,7 +151,7 @@ def calculate_equilibrium_oh(K, Acc, pH2O):
         except:
             return np.nan
 
-def analytical_OH_correct(T_K, pH2O, Acc, dH, dS):
+def analytical_OH_numerical(T_K, pH2O, Acc, dH, dS):
     """Correct analytical expression for [OH]"""
     # Calculate Kw
     Kw = np.exp(-dH/(R * T_K) + dS/R)
@@ -2287,5 +2287,6 @@ else:
 st.markdown("---")
 st.markdown("*Application automatically updates calculations when parameters change*")
 st.markdown("**Note on Bayesian fitting:** Requires PyMC and ArviZ packages. Install with: `pip install pymc arviz`")
+
 
 
