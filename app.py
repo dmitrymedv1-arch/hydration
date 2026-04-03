@@ -1884,7 +1884,7 @@ if n_total_points > 0:
                 return 'background-color: #f8d7da'
         
         st.dataframe(
-            summary_df.style.applymap(color_r2, subset=['Method 1', 'Method 2', 'Method 3 (Bayesian)'] if 'method3' in results and results['method3']['success'] else ['Method 1', 'Method 2']),
+            summary_df.style.map(color_r2, subset=['Method 1', 'Method 2', 'Method 3 (Bayesian)'] if 'method3' in results and results['method3']['success'] else ['Method 1', 'Method 2']),
             use_container_width=True
         )
         
